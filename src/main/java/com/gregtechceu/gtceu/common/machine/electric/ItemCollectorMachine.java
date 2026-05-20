@@ -145,10 +145,7 @@ public class ItemCollectorMachine extends TieredEnergyMachine
         super.onLoad();
         if (isRemote()) return;
 
-        if (getLevel() instanceof ServerLevel serverLevel) {
-
-            serverLevel.getServer().tell(new TickTask(0, this::updateCollectionSubscription));
-        }
+        scheduleForNextServerTick(this::updateCollectionSubscription);
 
         energySubs = energyContainer.addChangedListener(() -> {
             this.updateBatterySubscription();
