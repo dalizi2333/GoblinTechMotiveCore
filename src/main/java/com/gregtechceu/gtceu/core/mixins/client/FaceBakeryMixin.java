@@ -4,6 +4,7 @@ import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.BlockElementFace;
 import net.minecraft.client.renderer.block.model.FaceBakery;
 
+import com.gregtechceu.gtceu.core.IGTBakedQuad;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import org.joml.Vector3f;
 import org.spongepowered.asm.mixin.Mixin;
@@ -14,6 +15,6 @@ public class FaceBakeryMixin {
 
     @ModifyReturnValue(method = "bakeQuad", at = @At(value = "RETURN"))
     private BakedQuad gtceu$addQuadTextureKey(BakedQuad quad, Vector3f posFrom, Vector3f posTo, BlockElementFace face) {
-        return quad.gtceu$setTextureKey(face.texture());
+        return ((IGTBakedQuad) (Object) quad).gtceu$setTextureKey(face.texture());
     }
 }

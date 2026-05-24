@@ -1,6 +1,7 @@
 package com.gregtechceu.gtceu.client.model;
 
 import com.gregtechceu.gtceu.client.util.GTQuadTransformers;
+import com.gregtechceu.gtceu.core.IGTBakedQuad;
 
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -46,7 +47,7 @@ public class TextureOverrideModel<T extends BakedModel> extends BakedModelWrappe
     public static List<BakedQuad> retextureQuads(List<BakedQuad> quads, Map<String, TextureAtlasSprite> overrides) {
         List<BakedQuad> newQuads = new LinkedList<>();
         for (BakedQuad quad : quads) {
-            String textureKey = quad.gtceu$getTextureKey();
+            String textureKey = ((IGTBakedQuad) (Object) quad).gtceu$getTextureKey();
             if (textureKey == null || textureKey.isEmpty()) continue;
             if (textureKey.charAt(0) == '#') {
                 textureKey = textureKey.substring(1);

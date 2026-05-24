@@ -2,6 +2,7 @@ package com.gregtechceu.gtceu.api.data.chemical.material.registry;
 
 import com.gregtechceu.gtceu.GTCEu;
 import com.gregtechceu.gtceu.api.data.chemical.material.IMaterialRegistry;
+import com.gregtechceu.gtceu.core.IMappedRegistryAccess;
 import com.gregtechceu.gtceu.api.data.chemical.material.Material;
 import com.gregtechceu.gtceu.common.data.GTMaterials;
 
@@ -108,9 +109,10 @@ public final class MaterialRegistry extends MappedRegistry<Material> implements 
         return fallbackMaterials.get(GTCEu.MOD_ID);
     }
 
+    @SuppressWarnings("unchecked")
     @Override
     public boolean isFrozen() {
-        return this.gtceu$isFrozen();
+        return ((IMappedRegistryAccess<Material>) (Object) this).gtceu$isFrozen();
     }
 
     public void close() {

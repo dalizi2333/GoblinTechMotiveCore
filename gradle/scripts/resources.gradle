@@ -35,7 +35,9 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
     var neoVersion = libs.versions.neoForge.get()
     neoVersion = neoVersion.substring(0, neoVersion.lastIndexOf('.'))
     var configurationVersion = forge.versions.configuration.get()
-    configurationVersion = configurationVersion.substring(0, configurationVersion.lastIndexOf('-'))
+    if (configurationVersion.contains('-')) {
+        configurationVersion = configurationVersion.substring(0, configurationVersion.lastIndexOf('-'))
+    }
     var replaceProperties = [
             version             : version_toml,
             mod_id              : mod_id,
@@ -48,6 +50,8 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             jei_version         : forge.versions.jei.get(),
             emi_version         : forge.versions.emi.get(),
             jade_version        : forge.versions.jade.get(),
+            ae2_version         : forge.versions.ae2.get(),
+            create_mod_version      : project.findProperty("create_mod_version") ?: forge.versions.create.get().split("-")[0],
             modernfix_version   : forge.versions.modernfix.get(),
             mod_license         : mod_license,
             mod_name            : mod_name,

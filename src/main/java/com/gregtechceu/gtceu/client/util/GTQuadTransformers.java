@@ -8,6 +8,8 @@ import net.minecraft.util.Mth;
 import net.neoforged.neoforge.client.model.IQuadTransformer;
 import net.neoforged.neoforge.client.model.QuadTransformers;
 
+import com.gregtechceu.gtceu.core.IGTBakedQuad;
+
 public final class GTQuadTransformers {
 
     public static IQuadTransformer offset(float by) {
@@ -62,7 +64,7 @@ public final class GTQuadTransformers {
         }
         BakedQuad newQuad = new BakedQuad(vertices, quad.getTintIndex(), quad.getDirection(),
                 sprite, quad.isShade(), quad.hasAmbientOcclusion());
-        return newQuad.gtceu$setTextureKey(quad.gtceu$getTextureKey());
+        return ((IGTBakedQuad) (Object) newQuad).gtceu$setTextureKey(((IGTBakedQuad) (Object) quad).gtceu$getTextureKey());
     }
 
     public static BakedQuad setColor(BakedQuad quad, int argbColor, boolean clearTintIndex) {
@@ -71,13 +73,13 @@ public final class GTQuadTransformers {
                 quad.getSprite(), quad.isShade(), quad.hasAmbientOcclusion());
 
         QuadTransformers.applyingColor(argbColor).processInPlace(copy);
-        return copy.gtceu$setTextureKey(quad.gtceu$getTextureKey());
+        return ((IGTBakedQuad) (Object) copy).gtceu$setTextureKey(((IGTBakedQuad) (Object) quad).gtceu$getTextureKey());
     }
 
     public static BakedQuad copy(BakedQuad quad) {
-        return new BakedQuad(quad.getVertices().clone(), quad.getTintIndex(), quad.getDirection(),
-                quad.getSprite(), quad.isShade(), quad.hasAmbientOcclusion())
-                .gtceu$setTextureKey(quad.gtceu$getTextureKey());
+        return ((IGTBakedQuad) (Object) new BakedQuad(quad.getVertices().clone(), quad.getTintIndex(), quad.getDirection(),
+                quad.getSprite(), quad.isShade(), quad.hasAmbientOcclusion()))
+                .gtceu$setTextureKey(((IGTBakedQuad) (Object) quad).gtceu$getTextureKey());
     }
 
     private GTQuadTransformers() {}

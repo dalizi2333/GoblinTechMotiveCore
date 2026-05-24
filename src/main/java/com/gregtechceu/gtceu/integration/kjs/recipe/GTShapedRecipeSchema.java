@@ -107,7 +107,7 @@ public interface GTShapedRecipeSchema {
             if (type == type.event.shaped // if this type == kubejs:shaped
                     && type.event.shaped != type.event.vanillaShaped // check if not in serverOnly mode
                     && !json.has(KubeJSCraftingRecipe.INGREDIENT_ACTIONS_KEY) &&
-                    !json.has(KubeJSCraftingRecipe.MODIFY_RESULT_KEY) && !json.has(KubeJSCraftingRecipe.STAGE_KEY) &&
+                    !json.has(KubeJSCraftingRecipe.MODIFY_RESULT_KEY) &&
                     !json.has(KubeJSCraftingRecipe.MIRROR_KEY)) {
                 return type.event.vanillaShaped;
             }
