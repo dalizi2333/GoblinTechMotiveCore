@@ -69,8 +69,10 @@ dependencies {
     localRuntime(forge.spark)
     localRuntime(forge.modernfix)
 
-    // NeoEcoAE - High-performance AE2 addon (required for this modpack)
-    localRuntime(forge.neoecoae)
+    // NeoEcoAE - High-performance AE2 addon (for future integration)
+    // Note: Requires AE2 >= 19.2.17 and ldlib2. Currently compile-only until deps are resolved.
+    compileOnly(files('libs/neoecoae-1.3.4.jar'))
+    // localRuntime(files('libs/neoecoae-1.3.4.jar'))  // TODO: Add required deps (AE2 upgrade + ldlib2)
 
     localRuntime(forge.create) {
         // Needed to prevent game-test crashes

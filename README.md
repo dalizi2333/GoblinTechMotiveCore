@@ -18,7 +18,7 @@
 | **命名空间** | `gtceu` (保持与 GregTech CEu 兼容) |
 | **Minecraft** | 1.21.1 |
 | **模组加载器** | NeoForge |
-| **版本** | 0.0.1-alpha |
+| **版本** | 0.0.1-gtmotive |
 
 ---
 

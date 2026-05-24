@@ -111,12 +111,6 @@ journeymap-forge    = { module = "curse.maven:journeymap-32274", version.ref = "
 spark               = { module = "curse.maven:spark-361579", version.ref = "spark" }
 observable          = { module = "curse.maven:observable-509575", version.ref = "observable" }
 
-## NeoEcoAE ##
-neoecoae = "1.21.1-1.3.4"
-
-[libraries]
-neoecoae          = { module = "maven.modrinth:neoecoae", version.ref = "neoecoae" }
-
 [bundles]
 jei = ["jei-common-api", "jei-neoforge-api", "jei-neoforge-impl"]
 rei = ["rei-plugin", "rei-neoforge"]
