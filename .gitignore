@@ -24,3 +24,7 @@ src/generated/resources/.cache/
 *.DS_Store
 
 qodana.yaml
+
+# AI Agent IDE Support (similar to .vscode for VSCode)
+# Contains private skill definitions and agent configurations
+.trae/
