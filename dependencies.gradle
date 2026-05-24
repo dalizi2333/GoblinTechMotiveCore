@@ -25,9 +25,9 @@ dependencies {
     // AE2
     compileOnly(forge.ae2)
 
-    // Create
+    // Create Integration - Full version with Ponder, Flywheel included
+    compileOnly(forge.create)
     compileOnly(forge.ponder)
-    compileOnly(variantOf(forge.create) { classifier("slim") })
     compileOnly(forge.flywheel.forge.api)
 
     // KJS
@@ -68,6 +68,10 @@ dependencies {
     localRuntime(forge.ae2)
     localRuntime(forge.spark)
     localRuntime(forge.modernfix)
+
+    // NeoEcoAE - High-performance AE2 addon (required for this modpack)
+    localRuntime(forge.neoecoae)
+
     localRuntime(forge.create) {
         // Needed to prevent game-test crashes
         exclude group: "maven.modrinth", module: "journeymap"
