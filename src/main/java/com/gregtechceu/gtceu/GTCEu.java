@@ -31,7 +31,7 @@ import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;
 
-@Mod(GTCEu.MOD_ID)
+@Mod("goblintechmotive")
 public class GTCEu {
 
     public static final String MOD_ID = "gtceu";
@@ -48,6 +48,13 @@ public class GTCEu {
     public static IEventBus gtModBus;
 
     public GTCEu(IEventBus modBus, FMLModContainer container) {
+        // Conflict detection: block loading if original GregTech-Modern (mod ID: gtceu) is present
+        if (ModList.get().isLoaded("gtceu")) {
+            var msg = "GoblinTechMotive (goblintechmotive) cannot be loaded alongside GregTech-Modern (gtceu)! Please remove GregTech-Modern from your mods folder.";
+            LOGGER.fatal(msg);
+            throw new RuntimeException(msg);
+        }
+
         GTCEuAPI.instance = this;
         GTCEu.gtModBus = modBus;
         ConfigHolder.init();
