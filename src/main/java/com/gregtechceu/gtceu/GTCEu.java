@@ -31,10 +31,11 @@ import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;
 
-@Mod("goblintechmotive")
+@Mod(GTCEu.MOD_CONTAINER_ID)
 public class GTCEu {
 
     public static final String MOD_ID = "gtceu";
+    public static final String MOD_CONTAINER_ID = "goblintechmotive";
     private static final ResourceLocation TEMPLATE_LOCATION = ResourceLocation.fromNamespaceAndPath(MOD_ID, "");
     public static final Codec<ResourceLocation> GTCEU_ID = Codec.STRING.comapFlatMap(
             str -> ResourceLocation.read(appendIdString(str)),
@@ -50,7 +51,7 @@ public class GTCEu {
     public GTCEu(IEventBus modBus, FMLModContainer container) {
         // Conflict detection: block loading if original GregTech-Modern (mod ID: gtceu) is present
         if (ModList.get().isLoaded("gtceu")) {
-            var msg = "GoblinTechMotive (goblintechmotive) cannot be loaded alongside GregTech-Modern (gtceu)! Please remove GregTech-Modern from your mods folder.";
+            var msg = "GoblinTechMotive (" + MOD_CONTAINER_ID + ") cannot be loaded alongside GregTech-Modern (gtceu)! Please remove GregTech-Modern from your mods folder.";
             LOGGER.fatal(msg);
             throw new RuntimeException(msg);
         }
