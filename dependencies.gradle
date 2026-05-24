@@ -39,6 +39,19 @@ dependencies {
     compileOnly(forge.iris)
     compileOnly(forge.modernfix)
 
+    // Create 附属核心依赖
+    compileOnly(forge.sable)
+    compileOnly(forge.createaeronautics)
+    compileOnly(forge.createbigcannons)
+    compileOnly(forge.rpl)
+    compileOnly(forge.appliedcreate)
+    compileOnly(forge.drivebywire)
+    compileOnly(forge.deployerapi)
+    compileOnly(forge.vshoseconnectors)
+    compileOnly(forge.createmetallurgy)
+    compileOnly(forge.createdieselgenerators)
+    compileOnly(forge.createtweakedcontrollers)
+
     // Teams
     compileOnly(forge.ftblibrary)
     compileOnly(forge.ftbteams)
@@ -80,12 +93,32 @@ dependencies {
     compileOnly(forge.neoecoae)
     localRuntime(forge.neoecoae)
     localRuntime(forge.ldlib2)
+    localRuntime(forge.deployerapi)
 
     localRuntime(forge.create) {
         // Needed to prevent game-test crashes
         exclude group: "maven.modrinth", module: "journeymap"
         exclude group: "info.journeymap", module: "journeymap-api-neoforge"
     }
+
+    // Sable / Aeronautics 核心库
+    localRuntime(forge.sable)
+    localRuntime(forge.createaeronautics)
+    localRuntime(forge.rpl)
+    localRuntime(forge.kotlinforforge) {
+        transitive = false
+    }
+
+    // Create 附属内容
+    localRuntime(forge.createbitsnbobs)
+    localRuntime(forge.extragauges)
+    localRuntime(forge.createbigcannons)
+    localRuntime(forge.appliedcreate)
+    localRuntime(forge.drivebywire)
+    localRuntime(forge.vshoseconnectors)
+    localRuntime(forge.createmetallurgy)
+    localRuntime(forge.createdieselgenerators)
+    localRuntime(forge.createtweakedcontrollers)
 
     // Runtime Recipe Viewers - uncomment whichever one you want to use //
     localRuntime(forge.emi)
@@ -134,9 +167,6 @@ dependencies {
         transitive = false
     }
 
-    extraLocalRuntime(forge.kotlinforforge) {
-        transitive = false
-    }
     extraLocalRuntime(forge.observable)
     //////////////////////////
 

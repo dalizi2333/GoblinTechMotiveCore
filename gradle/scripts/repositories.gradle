@@ -96,6 +96,10 @@ repositories {
         forRepository { maven { url = "https://maven.squiddev.cc" } }
         filter { includeGroup("cc.tweaked") }
     }
+    exclusiveContent { // Ritchie's Projectile Library (RPL) - Create Big Cannons dependency
+        forRepository { maven { url = "https://maven.realrobotix.me/master/" } }
+        filter { includeGroup("com.rbasamoyai") }
+    }
     exclusiveContent { // This one lib that KJS 1.21 uses for whatever reason?
         forRepository { maven { url = "https://jitpack.io/" } }
         filter { includeGroup("com.github.rtyley") }
