@@ -44,7 +44,6 @@ dependencies {
     compileOnly(forge.createaeronautics)
     compileOnly(forge.createbigcannons)
     compileOnly(forge.rpl)
-    compileOnly(forge.appliedcreate)
     compileOnly(forge.drivebywire)
     compileOnly(forge.deployerapi)
     compileOnly(forge.vshoseconnectors)
@@ -53,6 +52,12 @@ dependencies {
     compileOnly(forge.createtweakedcontrollers)
     compileOnly(forge.createpropulsionsimulated)
     compileOnly(':electroenergetics-latest:')
+
+    // TFC 附属核心依赖
+    compileOnly(forge.patchouli)
+    compileOnly(forge.tfc)
+    compileOnly(forge.firmalife)
+    compileOnly(forge.torquelink)
 
     // 杂项核心依赖
     compileOnly(forge.advancedxray)
@@ -118,7 +123,6 @@ dependencies {
     localRuntime(forge.createbitsnbobs)
     localRuntime(forge.extragauges)
     localRuntime(forge.createbigcannons)
-    localRuntime(forge.appliedcreate)
     localRuntime(forge.drivebywire)
     localRuntime(forge.vshoseconnectors)
     localRuntime(forge.createmetallurgy)
@@ -126,6 +130,12 @@ dependencies {
     localRuntime(forge.createtweakedcontrollers)
     localRuntime(forge.createpropulsionsimulated)
     localRuntime(':electroenergetics-latest:')
+
+    // TFC 附属核心依赖
+    localRuntime(forge.patchouli)
+    localRuntime(forge.tfc)
+    localRuntime(forge.firmalife)
+    localRuntime(forge.torquelink)
 
     // 杂项核心模组
     localRuntime(forge.advancedxray)
