@@ -59,9 +59,6 @@ dependencies {
     compileOnly(forge.firmalife)
     compileOnly(forge.torquelink)
 
-    // 杂项核心依赖
-    compileOnly(forge.advancedxray)
-
     // Teams
     compileOnly(forge.ftblibrary)
     compileOnly(forge.ftbteams)
@@ -138,7 +135,6 @@ dependencies {
     localRuntime(forge.torquelink)
 
     // 杂项核心模组
-    localRuntime(forge.advancedxray)
 
     // Runtime Recipe Viewers - uncomment whichever one you want to use //
     localRuntime(forge.emi)

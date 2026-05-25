@@ -54,7 +54,6 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             create_mod_version      : project.findProperty("create_mod_version") ?: forge.versions.create.get().split("-")[0],
             deployer_mod_version    : project.findProperty("deployer_mod_version") ?: "",
             tfc_mod_version         : project.findProperty("tfc_mod_version") ?: "",
-            advancedxray_mod_version : project.findProperty("advancedxray_mod_version") ?: "",
             neoecoae_mod_version    : project.findProperty("neoecoae_mod_version") ?: "",
             ldlib2_mod_version      : project.findProperty("ldlib2_mod_version") ?: "",
             modernfix_version   : forge.versions.modernfix.get(),

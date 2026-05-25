@@ -25,7 +25,6 @@ patchouli = "1.21.1-93-NEOFORGE"
 tfc = "4.1.2"
 firmalife = "3.0.9"
 torquelink = "7844504"
-advancedxray = "5432850"
 
 # ===== 通用 Mod（客户端 + 服务端） =====
 registrate = "MC1.21-1.3.0+67"
@@ -169,7 +168,6 @@ createbitsnbobs   = { module = "maven.modrinth:create-bits-n-bobs", version.ref 
 extragauges       = { module = "maven.modrinth:extra-gauges", version.ref = "extragauges" }
 rpl               = { module = "com.rbasamoyai:ritchiesprojectilelib", version.ref = "rpl" }
 createpropulsionsimulated = { module = "maven.modrinth:create-propulsion-simulated", version.ref = "createpropulsionsimulated" }
-advancedxray      = { module = "curse.maven:advanced-xray-256256", version.ref = "advancedxray" }
 patchouli         = { module = "vazkii.patchouli:Patchouli", version.ref = "patchouli" }
 tfc               = { module = "maven.modrinth:terrafirmacraft", version.ref = "tfc" }
 firmalife         = { module = "maven.modrinth:firmalife", version.ref = "firmalife" }
