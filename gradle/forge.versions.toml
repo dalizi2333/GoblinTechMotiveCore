@@ -9,6 +9,7 @@ flywheel = "1.0.6"
 neoecoae = "1.3.4"
 ldlib2 = "2.2.12"
 sable = "1.2.2"
+sablecompanion = "1.6.0"
 createaeronautics = "YhZLrAFC"
 createbigcannons = "bsGaXKEd"
 drivebywire = "0.2.9"
@@ -154,7 +155,8 @@ spark               = { module = "maven.modrinth:spark", version.ref = "spark" }
 observable          = { module = "maven.modrinth:observable", version.ref = "observable" }
 
 neoecoae          = { module = "maven.modrinth:neoecoae", version.ref = "neoecoae" }
-sable             = { module = "dev.ryanhcode.sable:sable-common-1.21.1", version.ref = "sable" }
+sable             = { module = "dev.ryanhcode.sable:sable-neoforge-1.21.1", version.ref = "sable" }
+sablecompanion    = { module = "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1", version.ref = "sablecompanion" }
 createaeronautics = { module = "maven.modrinth:create-aeronautics", version.ref = "createaeronautics" }
 createbigcannons  = { module = "maven.modrinth:create-big-cannons", version.ref = "createbigcannons" }
 drivebywire       = { module = "maven.modrinth:drive-by-wire-sable", version.ref = "drivebywire" }

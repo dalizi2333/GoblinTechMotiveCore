@@ -106,9 +106,16 @@ repositories {
         forRepository { maven { url = "https://maven.realrobotix.me/master/" } }
         filter { includeGroup("com.rbasamoyai") }
     }
-    exclusiveContent { // Sable
+    exclusiveContent { // Sable & Sable Companion
         forRepository { maven { url = "https://maven.ryanhcode.dev/releases" } }
-        filter { includeGroup("dev.ryanhcode.sable") }
+        filter { 
+            includeGroup("dev.ryanhcode.sable")
+            includeGroup("dev.ryanhcode.sable-companion")
+        }
+    }
+    // Fuzs Mod Resources - Forge Config API Port
+    maven {
+        url = "https://raw.githubusercontent.com/Fuzss/modresources/main/maven/"
     }
     exclusiveContent { // This one lib that KJS 1.21 uses for whatever reason?
         forRepository { maven { url = "https://jitpack.io/" } }

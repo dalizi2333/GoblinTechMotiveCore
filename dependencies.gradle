@@ -30,8 +30,9 @@ dependencies {
     compileOnly(forge.create)
     compileOnly(forge.ponder)
     compileOnly(forge.flywheel.forge.api)
-
-    // KJS
+    
+    // Sable Companion - 用于与 Sable 的兼容性
+    jarJar(api("dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:${forge.versions.sablecompanion.get()}"))
     compileOnly(forge.bundles.kjs)
 
     // Rendering / Optimizations
@@ -40,7 +41,6 @@ dependencies {
     compileOnly(forge.modernfix)
 
     // Create 附属核心依赖
-    compileOnly(forge.sable)
     compileOnly(forge.createaeronautics)
     compileOnly(forge.createbigcannons)
     compileOnly(forge.rpl)
