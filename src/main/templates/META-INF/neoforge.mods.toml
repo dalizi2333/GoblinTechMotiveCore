@@ -102,6 +102,34 @@ enumExtensions = "META-INF/enum_extensions.json"
     ordering = "AFTER"
     side = "BOTH"
 
+[[dependencies.${mod_id}]]
+    modId = "aeronautics"
+    type = "required"
+    versionRange = "[${aeronautics_mod_version},)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+[[dependencies.${mod_id}]]
+    modId = "deployer"
+    type = "required"
+    versionRange = "[${deployer_mod_version},)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+[[dependencies.${mod_id}]]
+    modId = "tfc"
+    type = "required"
+    versionRange = "[${tfc_mod_version},)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+[[dependencies.${mod_id}]]
+    modId = "xray"
+    type = "optional"
+    versionRange = "[${advancedxray_mod_version},)"
+    ordering = "AFTER"
+    side = "CLIENT"
+
 
 #[features.${mod_id}]
 #openGLVersion = "[3.2,)"

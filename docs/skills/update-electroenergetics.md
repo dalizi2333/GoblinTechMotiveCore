@@ -35,9 +35,30 @@ python3 scripts/update_electroenergetics.py
 
 当 Create Electro Energetics 发布正式版后，将：
 
+### 完整切换回标准依赖方式
+
 1. 移除 `libs/` 目录和 `scripts/update_electroenergetics.py`
 2. 移除 `repositories.gradle` 中的 `flatDir` 仓库
-3. 改为使用 Modrinth Maven 或 Curse Maven 等标准依赖方式
+3. 将 `dependencies.gradle` 中 `':electroenergetics-latest:'` 替换为 `forge.cee` 版本目录引用
+4. 添加正式版 mod 的 Maven 依赖声明到 `gradle/forge.versions.toml`（Modrinth Maven 或 Curse Maven）
+
+### 注册为正式的必要依赖
+
+版本稳定后需在以下位置注册，使其获得与其他核心依赖同等的检查权限：
+
+1. `gradle.properties` — 添加 `cee_mod_version = <正式版本号>` 属性
+2. `gradle/scripts/resources.gradle` — 在 `replaceProperties` 中添加 `cee_mod_version` 变量映射
+3. `src/main/templates/META-INF/neoforge.mods.toml` — 添加依赖声明：
+   ```toml
+   [[dependencies.${mod_id}]]
+       modId = "electroenergetics"
+       type = "required"
+       versionRange = "[${cee_mod_version},)"
+       ordering = "AFTER"
+       side = "BOTH"
+   ```
+
+这样一来，NeoForge 在启动阶段即可检测 CEE 是否缺失，不再依赖运行时 `GoblinTech.isCEELoaded()` 的 Java 代码检查。
 
 ## 相关文件
 
