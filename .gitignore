@@ -23,6 +23,8 @@ src/generated/resources/.cache/
 *.patch
 *.DS_Store
 
+libs/
+
 qodana.yaml
 
 # AI Agent IDE Support (similar to .vscode for VSCode)

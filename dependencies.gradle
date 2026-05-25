@@ -51,6 +51,11 @@ dependencies {
     compileOnly(forge.createmetallurgy)
     compileOnly(forge.createdieselgenerators)
     compileOnly(forge.createtweakedcontrollers)
+    compileOnly(forge.createpropulsionsimulated)
+    compileOnly(':electroenergetics-latest:')
+
+    // 杂项核心依赖
+    compileOnly(forge.advancedxray)
 
     // Teams
     compileOnly(forge.ftblibrary)
@@ -119,6 +124,11 @@ dependencies {
     localRuntime(forge.createmetallurgy)
     localRuntime(forge.createdieselgenerators)
     localRuntime(forge.createtweakedcontrollers)
+    localRuntime(forge.createpropulsionsimulated)
+    localRuntime(':electroenergetics-latest:')
+
+    // 杂项核心模组
+    localRuntime(forge.advancedxray)
 
     // Runtime Recipe Viewers - uncomment whichever one you want to use //
     localRuntime(forge.emi)
