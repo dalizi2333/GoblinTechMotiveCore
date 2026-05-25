@@ -1,6 +1,6 @@
-package com.dalizi2333.goblintech;
+package com.goblincoders.goblintech;
 
-import com.dalizi2333.goblintech.api.GoblinTechValues;
+import com.goblincoders.goblintech.api.GoblinTechValues;
 
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLEnvironment;

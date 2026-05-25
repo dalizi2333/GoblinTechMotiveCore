@@ -1,4 +1,4 @@
-package com.dalizi2333.goblintech.api;
+package com.goblincoders.goblintech.api;
 
 import net.minecraft.util.RandomSource;
 

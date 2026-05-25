@@ -103,13 +103,6 @@ enumExtensions = "META-INF/enum_extensions.json"
     side = "BOTH"
 
 [[dependencies.${mod_id}]]
-    modId = "aeronautics"
-    type = "required"
-    versionRange = "[${aeronautics_mod_version},)"
-    ordering = "AFTER"
-    side = "BOTH"
-
-[[dependencies.${mod_id}]]
     modId = "deployer"
     type = "required"
     versionRange = "[${deployer_mod_version},)"
@@ -120,6 +113,20 @@ enumExtensions = "META-INF/enum_extensions.json"
     modId = "tfc"
     type = "required"
     versionRange = "[${tfc_mod_version},)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+[[dependencies.${mod_id}]]
+    modId = "neoecoae"
+    type = "required"
+    versionRange = "[${neoecoae_mod_version},)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+[[dependencies.${mod_id}]]
+    modId = "ldlib2"
+    type = "required"
+    versionRange = "[${ldlib2_mod_version},)"
     ordering = "AFTER"
     side = "BOTH"
 

@@ -102,7 +102,7 @@ dependencies {
     // NeoEcoAE - High-performance AE2 addon
     compileOnly(forge.neoecoae)
     localRuntime(forge.neoecoae)
-    localRuntime(forge.ldlib2)
+    localRuntime("com.lowdragmc.ldlib2:ldlib2-neoforge-1.21.1:${forge.versions.ldlib2.get()}:all")
     localRuntime(forge.deployerapi)
 
     localRuntime(forge.create) {
