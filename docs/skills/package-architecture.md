@@ -11,8 +11,9 @@
 | 包名 | 所属顶层包 | 职责 | 说明 |
 |------|-----------|------|------|
 | `goblintech` | `com.goblincoders.goblintech` | **主游戏内容** | 配方链设计、电压限制到 IV、核心常量 |
-| `goblinmachine` | `com.goblincoders.goblinmachine` | **机器逻辑** | 重写 GTM 机器底层逻辑 |
-| `goblinpower` | `com.goblincoders.goblinpower` | **电力系统** | 重写电力系统，计划迁移到 CEE |
+| `goblintech.recipe` | `com.goblincoders.goblintech.recipe` | **配方系统扩展** | RecipeOutputModifier、RecipeMode、AmbientType、ProgressRateProvider 等核心架构 |
+| `goblintech.machine` | `com.goblincoders.goblintech.machine` | **机器逻辑** | 重写 GTM 机器底层逻辑（SlotMode、缓冲器、冰箱、提取机等） |
+| `goblintech.power` | `com.goblincoders.goblintech.power` | **电力系统** | 重写电力系统，计划迁移到 CEE |
 | `goblinkinetic` | `com.goblincoders.goblinkinetic` | **机械动力联动** | 添加 Create 机械动力支持 |
 | `goblinmotive` | `com.goblincoders.goblinmotive` | **物理化支持** | 基- 于 SABLE 物理化引擎实现 Valkyrien Skies / Create Aeronautics 兼容 |
 | `goblintfc` | `com.goblincoders.goblintfc` | **TFC 支持** | TerraFirmaCraft 兼容 |
