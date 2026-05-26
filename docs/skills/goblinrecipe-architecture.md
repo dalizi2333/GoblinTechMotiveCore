@@ -11,7 +11,7 @@
 1. **配方输出修改器（RecipeOutputModifier）**：在配方产出输出物品/流体时，根据匹配到的输入动态修改输出内容（复制 NBT、trait、food 属性等）。
 2. **带参数的环境条件系统（AmbientType）**：替代 GTM 现有的二元 CleanroomType 判断，支持数值参数的条件匹配（洁净等级、温度、转速等），并支持三种失败行为（WAITING / HALT_PROGRESS / INTERRUPT）。
 3. **多种配方执行模式（RecipeMode）**：TRANSFORM（物品搬运型）、MODIFY（原地修改型）、AMBIENT（环境提供型）。
-4. **进度速率提供者（ProgressRateProvider）**：多因素乘积叠加的进度速率系统，支持供电不足降速（tickInput 同步降耗）、转速影响加工速度。
+4. **可变速加工**：`GoblinRecipeLogic` 子类通过 `progressRate`（PROGRESS_SCALE=16）和 `ambientSatisfied` 实现变速与 HALT_PROGRESS，支持转速影响加工速度、降速运行等。
 5. **可扩展 RecipeCapability**：热量、扭矩等模块特有资源与 EU 同级，统一走 tickInput/tickOutput。
 
 ### 1.2 背景与动机
@@ -23,62 +23,104 @@
 
 ### 1.3 设计原则
 
-- **最小侵入**：尽量不修改 GTM 现有公开 API 签名，通过新增字段和扩展点集成。
+- **零 GTCEu 源码改动**：通过继承（`GoblinRecipe extends GTRecipe`、`GoblinRecipeLogic extends RecipeLogic`）扩展，不修改任何 GTM 原有文件。
 - **模块解耦**：通用 API 层（goblintech.recipe）不依赖任何具体 mod。集成实现放在 goblintfc、goblinkinetic 等包中。
-- **可剥离**：未来可将 goblinrecipe、goblintfc 等独立为附属模组，核心扩展点通过 Mixin 注入 GTM。
-- **向后兼容**：旧超净间保留原逻辑不动，新超净间另起炉灶。现有配方 JSON 全部兼容。
+- **可剥离**：未来可将 goblinrecipe、goblintfc 等独立为附属模组。
+- **向后兼容**：GTM 老机器使用原生 `RecipeLogic`，新机器使用 `GoblinRecipeLogic`，互不干扰。现有配方 JSON 全部兼容。
 
 ---
 
 ## 2. 包名架构
 
-### 2.1 新增/修改的包
+### 2.1 新增包
 
 | 包名 | 层级 | 职责 |
 |------|------|------|
-| `com.goblincoders.goblintech.recipe.api` | 通用 API | RecipeOutputModifier、RecipeMode、RecipeContext、ProgressRateProvider、ProgressRateContext |
-| `com.goblincoders.goblintech.recipe.api.ambient` | 通用 API | AmbientType\<T\>、AmbientEntry\<T\>、AmbientCondition、ConditionFailBehavior |
-| `com.goblincoders.goblintech.recipe.api.progress` | 通用 API | ProgressRateProvider 接口、ProgressRateContext 接口 |
+| `com.goblincoders.goblintech.recipe.api` | 通用 API | RecipeOutputModifier、RecipeMode、ConditionFailBehavior |
+| `com.goblincoders.goblintech.recipe.api.ambient` | 通用 API | AmbientType\<T\>、AmbientEntry\<T\>、AmbientCondition |
+| `com.goblincoders.goblintech.recipe.api.modifier` | 通用 API | RecipeOutputModifier 接口 |
+| `com.goblincoders.goblintech.recipe.api.recipe` | 通用 API | RecipeContext |
+| `com.goblincoders.goblintech.recipe` | 核心实现 | GoblinRecipe（ext GTRecipe）、GoblinRecipeLogic（ext RecipeLogic） |
 | `com.goblincoders.goblintech.recipe.modifiers` | 通用实现 | 内置通用修改器（CopyComponent、SetComponent 等） |
-| `com.goblincoders.goblintech.recipe.ambient` | 基础实现 | 基础环境层：仅 CLEANROOM（静态等级）。冷热回退到 GTM 原有 TRANSFORM 模式 |
-| `com.goblincoders.goblintech.recipe.progress` | 基础实现 | ConstantProgressRate、PowerShortfallProgressRate、GTMProgressRateContext |
+| `com.goblincoders.goblintech.recipe.ambient` | 基础实现 | 基础环境层：仅 CLEANROOM（静态等级） |
 | `com.goblincoders.goblintech.machine.slot` | 机器逻辑 | SlotMode 枚举、可配置槽位接口 |
 | `com.goblincoders.goblintfc.recipe` | TFC 集成 | TFC 专用修改器、HeatRecipeCapability、Ingredient 条件 |
 | `com.goblincoders.goblintfc.recipe.ambient` | TFC 进阶 | TFC 加载时替换基础环境：CLEANLINESS（衰减）+ HEAT + COLD |
-| `com.goblincoders.goblinkinetic.progress` | Create 集成 | KineticProgressRateContext、RPMProgressRate |
-| `com.goblincoders.goblinkinetic.recipe.ambient` | Create 集成 | KineticAmbientTypes（ambient_rpm / ambient_max_rpm） |
+| `com.goblincoders.goblinkinetic.recipe` | Create 集成 | KineticRecipeLogic（ext GoblinRecipeLogic）、RPM ambient conditions |
 
-### 2.2 改动 GTCEu 原有文件的清单
+### 2.2 GTCEu 原有文件的改动
 
-以下为计划直接修改的 GTCEu 源代码（若未来剥离为附属模组，则作为 Mixin 注入点，详见 §13）：
+**零改动。** 所有扩展通过继承实现：
 
-| 文件 | 改动类型 | 改动内容 |
-|------|----------|----------|
-| `GTRecipe.java` | 新增字段 | `RecipeMode mode`（默认 TRANSFORM） |
-| `GTRecipe.java` | 新增字段 | `List<RecipeOutputModifier> outputModifiers`（默认 List.of()） |
-| `GTRecipe.java` | 新增字段 | `List<RecipeOutputModifier> tickOutputModifiers`（默认 List.of()） |
-| `GTRecipe.java` | 新增字段 | `Map<ResourceLocation, ?> ambientConditions`（默认 Map.of()） |
-| `RecipeLogic.java` | 分支逻辑 | `setupRecipe()` 中根据 mode 分支（TRANSFORM/MODIFY/AMBIENT） |
-| `RecipeLogic.java` | 分支逻辑 | `onRecipeFinish()` 中对 MODIFY 模式不调用 IO.OUT 搬运 |
-| `RecipeLogic.java` | 新增字段 | `@Nullable RecipeContext recipeContext` |
-| `RecipeLogic.java` | 分支逻辑 | `handleRecipeWorking()` 中根据 ConditionFailBehavior 分支 |
-| `RecipeLogic.java` | 进度计算 | `progress++` 改为 `progress += multiplier.progressRate()`（多 provider 乘积 + inputRate 独立缩放） |
-| `RecipeRunner.java` | 新增字段 | `@Nullable RecipeContext context` |
-| `RecipeRunner.java` | 新增逻辑 | `handleContents()` 末尾对 OUT 阶段应用 outputModifiers |
-| `RecipeCondition.java` | 兼容 | 旧的 CleanroomCondition 保留，新增 AmbientCondition |
-| `CleanroomType.java` | 无需修改 | 旧超净间保留原逻辑 |
-| `CleanroomProviderTrait.java` | 无需修改 | 旧超净间保留原逻辑 |
-| `CleanroomReceiverTrait.java` | 无需修改 | 旧超净间保留原逻辑 |
-| `RecipeHelper.java` | 新增方法 | `handleRecipeModify(holder, recipe, context)` 用于 MODIFY 模式 |
-| `GTRecipeSerializer.java` | 扩展序列化 | 序列化/反序列化 mode、outputModifiers、ambientConditions |
-| `GTRecipeBuilder.java` | 新增 Builder 方法 | `.mode()`, `.outputModifier()`, `.ambientCondition()` |
-| `MachineDefinition.java` | 无需修改 | 现有 beforeWorking/afterWorking 回调保持不变 |
+| GTCEu 文件 | 替代方案 |
+|---|---|
+| `GTRecipe.java` | `GoblinRecipe extends GTRecipe` — 新增 mode、ambientConditions、outputModifiers 字段 |
+| `RecipeLogic.java` | `GoblinRecipeLogic extends RecipeLogic` — 新增 PROGRESS_SCALE、progressRate、ambientSatisfied、recipeContext |
+| `WorkableTieredMachine.java` | 新机器子类重写 `createRecipeLogic()` 返回 `GoblinRecipeLogic` |
+| `RecipeRunner.java` | `GoblinRecipeLogic.handleRecipeWorking()` 内自分发 recipeContext |
+| `GTRecipeSerializer.java` | GoblinRecipe 序列化待后续补充 |
+| `GTRecipeBuilder.java` | 新 Builder 类（待实现） |
+
+### 2.3 继承体系
+
+```
+GTRecipe (GTM, 零改动)
+  └─ GoblinRecipe (mode + ambientConditions + outputModifiers)
+
+RecipeLogic (GTM, 零改动)
+  └─ GoblinRecipeLogic (PROGRESS_SCALE=16 + progressRate + ambientSatisfied + recipeContext)
+      └─ KineticRecipeLogic (updateFromRPM → progressRate映射)
+```
+
+### 2.4 机器接入方式
+
+`WorkableTieredMachine` 中用 `new RecipeLogic(this)` 硬编码创建。新机器子类覆盖 `createRecipeLogic()`：
+
+```java
+public class MyGoblinMachine extends WorkableTieredMachine {
+    @Override
+    protected RecipeLogic createRecipeLogic() {
+        return new GoblinRecipeLogic(this);
+    }
+}
+```
+
+动能机器：
+
+```java
+public class KineticMillstone extends MyGoblinMachine {
+    private final KineticRecipeLogic logic;
+
+    public KineticMillstone(...) {
+        this.logic = (KineticRecipeLogic) createRecipeLogic();
+    }
+
+    @Override
+    protected RecipeLogic createRecipeLogic() {
+        return new KineticRecipeLogic(this);
+    }
+
+    // 在自己的 tick 订阅中更新 progressRate
+    void kineticTick() {
+        logic.updateFromRPM(getSpeed());
+    }
+}
+```
 
 ---
 
-## 3. RecipeMode（配方执行模式）
+## 3. GoblinRecipe（扩展配方）
 
-### 3.1 枚举定义
+`GoblinRecipe extends GTRecipe`，新增字段（全部有默认值，不影响 GTRecipe 原有行为）：
+
+```java
+public RecipeMode mode = RecipeMode.TRANSFORM;
+public Map<ResourceLocation, AmbientEntry<?>> ambientConditions = Map.of();
+public List<RecipeOutputModifier> outputModifiers = List.of();
+public List<RecipeOutputModifier> tickOutputModifiers = List.of();
+```
+
+### 3.1 RecipeMode（配方执行模式）
 
 ```java
 package com.goblincoders.goblintech.recipe.api;
@@ -287,7 +329,6 @@ public class RecipeContext {
 | `capturedTickInputs` | 单次配方周期 | tick 修改器读取每 tick 的输入变化 |
 | `data` | 单次配方周期 | 修改器之间链式协作、传递中间结果 |
 | `phase` | 单次配方周期 | 修改器根据阶段调整行为 |
-| `inputRate` | 每 tick 更新 | RecipeLogic 写入当前 `RateMultiplier.inputRate()`，RecipeRunner tick IN 时读取以缩放消耗 |
 
 ### 5.3 关键方法
 
@@ -299,8 +340,6 @@ public void setData(String key, Object value) { ... }
 public void setPhase(Phase phase) { this.phase = phase; }
 public boolean isPhase(Phase phase) { return this.phase == phase; }
 void applyOutputModifiers(GTRecipe recipe, Map<RecipeCapability<?>, List<Object>> outputs) { ... }
-void setInputRate(float rate) { this.inputRate = rate; }
-float inputRate() { return inputRate; }
 ```
 
 ### 5.4 生命周期
@@ -311,7 +350,7 @@ RecipeLogic.findAndHandleRecipe()
 RecipeLogic.setupRecipe()
     ↓ TRANSFORM：快照消耗前的输入
     ↓ MODIFY：不消耗，HOLD 槽物品引用写入 context
-每 tick: progress += multiplier.progressRate() → tickOutputModifiers 每 tick 应用
+每 tick: handleTickRecipe(IO.IN/OUT) → tickOutputModifiers 每 tick 应用
 RecipeLogic.onRecipeFinish()
     ↓ 应用 outputModifiers → recipeContext = null
 ```
@@ -370,7 +409,7 @@ public enum ConditionFailBehavior {
 - `HALT_PROGRESS`：条件失败 → 状态保持 WORKING → `progress` 不变 → 恢复后无缝继续
 - `INTERRUPT`：条件失败 → 中断配方 → 物品/流体在槽位中不变
 
-**与 ProgressRateContext 的对接**：当条件失败行为为 `HALT_PROGRESS` 时，RecipeLogic 设置 `ambientSatisfied = false`，所有 ProgressRateProvider 自然返回 0。
+**与 `ambientSatisfied` 的对接**：条件失败行为为 `HALT_PROGRESS` 时，`GoblinRecipeLogic` 设置 `ambientSatisfied = false`，子类检查后设 `progressRate = 0`（进度冻结，tick IO 仍执行）。
 
 ### 6.3 AmbientType\<T\>（环境类型注册项）
 
@@ -679,197 +718,101 @@ TFC 热力系统核心 API：
 
 ---
 
-## 7. 进度速率提供者（ProgressRateProvider）
+## 7. 可变速加工（PROGRESS_SCALE + progressRate）
 
 ### 7.1 动机
 
-Create 的转速会动态影响加工速度，GTM 的供电不足也应该能降速运行而非直接停机。
-需要将配方进度从 `progress++` 升级为 `progress += 多个因素的乘积`。
+原有 `progress++` 只有恒速。Create 的转速动态影响加工速度，供电不足也应能降速运行而非停机。
 
-**设计原则**：
-- **Provider 由机器持有**：进度速率是机器的物理特性，不是配方的属性
-- **多因素乘积叠加**：最终速率 = 所有 provider 返回值的乘积
-- **进度和输入消耗独立计算**：每个 Provider 返回 `RateMultiplier(progressRate, inputRate)`，多 Provider 乘积叠加。`RPMProgressRate` 返回 `HALTED(0, 1)`：进度冻结但扭矩不减；`PowerShortfall` 返回 `scaled(0.5)`：两值同步。
-- **向后兼容**：不注册任何 provider = 等效 `progress += 1.0`
+### 7.2 设计
 
-Provider 和 AmbientCondition 的区别：
+`GoblinRecipeLogic extends RecipeLogic`，`progressRate` 是机器的每 tick 可变属性。
 
-| | AmbientCondition | ProgressRateProvider |
-|---|---|---|
-| 作用 | 判断配方"能不能启动"（二元） | 决定配方"执行多快"（连续） |
-| 持有方 | 配方 JSON（ambientConditions） | 机器（MachineDefinition 注册） |
-| 典型例子 | "环境温度 ≥ 1600°C" | "当前转速 / 最佳转速" |
-
-### 7.2 核心接口
+**纯整数**：`PROGRESS_SCALE = 16`。配方 `duration × 16`，`progress += progressRate`。默认 `progressRate = 16` → 与 `progress += 1` 等效。无需 `float`、无需 `computeProgressRate()` 回调。
 
 ```java
-// com.goblincoders.goblintech.recipe.api.progress.ProgressRateProvider
-public interface ProgressRateProvider {
-    RateMultiplier getRate(ProgressRateContext ctx);
+// 对比
+旧: duration = 200,   progress += 1    → 200 ticks
+新: duration = 3200,  progress += 16   → 200 ticks（等效）
+
+RPM 0.5× → progressRate=8   → 50% 速度
+RPM 2.0× → progressRate=32  → 200% 速度
+```
+
+**对外 getter 自动除以 scale**，GUI 剩余时间 / 进度条百分比不受影响：
+
+```java
+@Override public int getProgress()    { return progress / PROGRESS_SCALE; }
+@Override public int getMaxProgress()  { return duration / PROGRESS_SCALE; }
+// getProgressPercent() = progress / duration — 1600/3200 = 50%，天然正确
+```
+
+**HALT_PROGRESS**：`ambientSatisfied = false` → 子类将 `progressRate` 设为 0。进度冻结，tick IO 仍正常执行。
+
+### 7.3 GoblinRecipeLogic 核心字段
+
+```java
+public class GoblinRecipeLogic extends RecipeLogic {
+    public static final int PROGRESS_SCALE = 16;
+    protected int progressRate = PROGRESS_SCALE;
+    protected @Nullable RecipeContext recipeContext;
+    protected boolean ambientSatisfied = true;
 }
 ```
 
+### 7.4 速度倍率是机器的唯一物理属性
+
+不在 RecipeLogic 中提供 Provider 链、不分拆为多个独立乘数。降耗（tick input 消耗缩放）由机器子类在 `handleTickRecipeIO()` 中自行处理，RecipeLogic / RecipeRunner 不介入。单一个 int 进度量，没有 ambiguity。
+
+**动能机器不降耗**——扭矩占传动轴本身就是对能量网络的负载，再缩放消耗量反而不合理。
+
+### 7.5 KineticRecipeLogic（RPM → progressRate）
+
 ```java
-// com.goblincoders.goblintech.recipe.api.progress.RateMultiplier
-public record RateMultiplier(float progressRate, float inputRate) {
-    public static final RateMultiplier FULL = new RateMultiplier(1.0f, 1.0f);
+public class KineticRecipeLogic extends GoblinRecipeLogic {
+    protected float optimalRPM = 16f;
 
-    /** 进度暂停但不缩减输入（如 HALT_PROGRESS：扭矩仍占着传动轴） */
-    public static final RateMultiplier HALTED = new RateMultiplier(0f, 1.0f);
-
-    /** 两值同步（如供电不足：进度和耗电同比例下降） */
-    public static RateMultiplier scaled(float rate) { return new RateMultiplier(rate, rate); }
-
-    /** 加总：用于多 Provider 乘积叠加 */
-    public RateMultiplier multiply(RateMultiplier other) {
-        return new RateMultiplier(
-            this.progressRate * other.progressRate,
-            this.inputRate * other.inputRate
-        );
+    /** 由动能机器的 tick 订阅调用 */
+    public void updateFromRPM(float currentRPM) {
+        if (!ambientSatisfied) { this.progressRate = 0; return; }
+        if (optimalRPM == 0f)   { this.progressRate = PROGRESS_SCALE; return; }
+        float absRPM = Math.abs(currentRPM);
+        if (absRPM == 0f)       { this.progressRate = 0; return; }
+        this.progressRate = (int)(absRPM / optimalRPM * PROGRESS_SCALE);
     }
 }
 ```
 
-```java
-// com.goblincoders.goblintech.recipe.api.progress.ProgressRateContext — 顶层接口
-// 各模块自行继承，携带模块特有数据。Provider 内部 cast 到所需子类型。
-public interface ProgressRateContext {
-    GTRecipe recipe();
-    RecipeContext recipeContext();
-    boolean ambientSatisfied();  // HALT_PROGRESS 类条件失败时为 false
-}
-```
+不设上限——`rpm = optimalRPM × 10` → `progressRate = 160`。实际上限由 Create 应力网络约束。
+
+### 7.6 带降速的 EU 机器（示例）
 
 ```java
-// com.goblincoders.goblintech.recipe.progress.GTMProgressRateContext — 基础实现
-public class GTMProgressRateContext implements ProgressRateContext {
-    private final GTRecipe recipe;
-    private final RecipeContext recipeContext;
-    private final long availableEUt;
-    private final long requiredEUt;
-    private final boolean ambientSatisfied;
-    // getters...
-}
-```
+public class DeredatingMaceratorLogic extends GoblinRecipeLogic {
+    private final TickInputTracker tracker = new TickInputTracker(20); // 20tick 窗口
 
-```java
-// com.goblincoders.goblinkinetic.progress.KineticProgressRateContext — 动能扩展
-public class KineticProgressRateContext extends GTMProgressRateContext {
-    private final float rpm;
-    public float rpm() { return rpm; }
-    // getters...
-}
-```
-
-> **扩展原则**：新增联动只需新建子类 → `ManaProgressRateContext extends GTMProgressRateContext` 加 `mana` 字段，零改动 api 包。
-
-### 7.3 RecipeLogic 集成
-
-```java
-// RecipeLogic 新增：
-private List<ProgressRateProvider> progressRateProviders = new ArrayList<>();
-public void addProgressRateProvider(ProgressRateProvider p) { ... }
-private boolean ambientSatisfied = true;
-
-/** 子类重写以提供模块特有 context。默认返回 GTMProgressRateContext。 */
-protected ProgressRateContext createProgressRateContext() {
-    return new GTMProgressRateContext(recipe, recipeContext, availableEUt, requiredEUt, ambientSatisfied);
-}
-
-// handleRecipeWorking() 改为：先检查条件 → 按 failBehavior 分支 → 再计算进度
-protected void handleRecipeWorking() {
-    var conditionResult = checkConditions(lastRecipe);
-    if (conditionResult.isSuccess()) {
-        ambientSatisfied = true;
-    } else {
-        ConditionFailBehavior worst = conditionResult.worstFailBehavior();
-        switch (worst) {
-            case WAITING -> {
-                setWaiting(conditionResult.reason());
-                ambientSatisfied = false;
-            }
-            case HALT_PROGRESS -> {
-                // 状态保持 WORKING。ambientSatisfied = false 使 provider 返回 0
-                ambientSatisfied = false;
-            }
-            case INTERRUPT -> {
-                interruptRecipe();
-                return;
-            }
-        }
+    void updateDeration() {
+        if (!ambientSatisfied) { progressRate = 0; return; }
+        float trend = tracker.getOverallRate();
+        progressRate = (int)Math.clamp(trend * PROGRESS_SCALE, 1, PROGRESS_SCALE);
     }
 
-    // 统一进度计算
-    ProgressRateContext ctx = createProgressRateContext();
-    RateMultiplier multiplier = RateMultiplier.FULL;
-    for (var provider : progressRateProviders) {
-        multiplier = multiplier.multiply(provider.getRate(ctx));
-    }
-    progress += multiplier.progressRate();
-
-    // 将 inputRate 写入 RecipeContext，供 RecipeRunner tick IN 时读取
-    recipeContext.setInputRate(multiplier.inputRate());
-
-    if (progress >= duration) { onRecipeFinish(); }
+    // 降耗：重写 handleTickRecipeIO，对 IN 阶段按 progressRate / PROGRESS_SCALE 缩放
 }
-```
 
-**两个速率独立相乘**：
-- `progressRate`：多 Provider 的进度倍率乘积。1.0=正常，0=暂停，>1=加速。
-- `inputRate`：多 Provider 的输入消耗倍率乘积。1.0=全耗，0.5=半耗，0=不耗。
-- `RPMProgressRate` 返回 `RateMultiplier.HALTED`（progressRate=0, inputRate=1）→ 进度冻结但扭矩不减。
-- `PowerShortfallProgressRate` 返回 `RateMultiplier.scaled(0.5)`（0.5, 0.5）→ 进度和耗电同步减半。
-- `inputRate` 写入 `RecipeContext` 后，`RecipeRunner.handleContents()` tick IN 阶段读取并按比例缩放消耗量。
-- 公式天然正确：同一台机器同时注册两者 → 乘积后 progressRate 和 inputRate 各自独立计算。
+### 7.7 与现有行为的兼容
 
-### 7.4 分层实现
-
-| 包 | 类 | 用途 | 注册对象 |
-|---|---|---|---|
-| `goblintech.recipe.api.progress` | `ProgressRateProvider` 接口 | 定义契约 | — |
-| `goblintech.recipe.api.progress` | `ProgressRateContext` 接口 | 顶层上下文 | — |
-| `goblintech.recipe.progress` | `GTMProgressRateContext` | 携带 EUT 字段 | `createContext()` 默认返回 |
-| `goblinkinetic.progress` | `KineticProgressRateContext` | 继承 + rpm 字段 | 动能机器子类重写 |
-| `goblintech.recipe.progress` | `ConstantProgressRate` | 等效旧 `progress++` | GTM 老机器默认注册 |
-| `goblintech.recipe.progress` | `PowerShortfallProgressRate` | 供电不足按比例降速 | 新机器显式注册 |
-| `goblinkinetic.progress` | `RPMProgressRate` | 转速影响加工速度 | Create 动能机器注册 |
-
-#### ConstantProgressRate — GTM 老机器默认注册
-
-```java
-public class ConstantProgressRate implements ProgressRateProvider {
-    @Override
-    public RateMultiplier getRate(ProgressRateContext ctx) { return RateMultiplier.FULL; }
-}
-```
-
-#### PowerShortfallProgressRate — 新机器可选注册
-
-```java
-public class PowerShortfallProgressRate implements ProgressRateProvider {
-    private static final float MIN_RATE = 0.1f;
-
-    @Override
-    public RateMultiplier getRate(ProgressRateContext ctx) {
-        if (!(ctx instanceof GTMProgressRateContext gtm)) return RateMultiplier.FULL;
-        if (gtm.requiredEUt() <= 0) return RateMultiplier.FULL;
-        float ratio = (float) gtm.availableEUt() / gtm.requiredEUt();
-        float rate = Math.max(MIN_RATE, Math.min(1.0f, ratio));
-        return RateMultiplier.scaled(rate);
-    }
-}
-```
-
-### 7.5 与现有行为的兼容
-
-| 场景 | 旧 GTCEu 行为 | 新行为（注册 PowerShortfall） |
-|------|-------------|---------------------------|
-| 供电 100% | `progress++` | multiplier=(1.0, 1.0) — 全速全耗 |
-| 供电 50% | 进 WAITING，进度暂停 | multiplier=(0.5, 0.5) — 进度和耗电同步减半 |
-| 供电为 0 | 进 WAITING | multiplier=(0.1, 0.1) — 保底最低速率和最低消耗 |
-| 不注册任何 provider | — | `progress += 1.0`，完全向后兼容 |
+| 场景 | 旧 GTCEu 行为 | 新行为 |
+|------|-------------|-------|
+| GTM 老机器 | `progress++`（RecipeLogic） | 不受影响——使用原生 RecipeLogic |
+| 新机器 | 无 | `progress += 16`（GoblinRecipeLogic 默认） |
+| RPM 超速 | 无 | `progressRate` = 8..160..320，可 >16 |
+| HALT_PROGRESS | 无 | `ambientSatisfied=false` → `progressRate=0` |
+| 降速运行 | 进 WAITING 停机 | 子类维持 WORKING，设降速 progressRate |
 
 ---
+
+
 
 ## 8. 槽位语义（SlotMode）
 
@@ -922,87 +865,83 @@ public interface IConfigurableSlot {
 
 ---
 
-## 9. GTCEu 源码改动细节
+## 9. 核心继承类细节
 
-### 9.1 GTRecipe 新增字段
+### 9.1 GoblinRecipe（extends GTRecipe）
 
 ```java
-public RecipeMode mode = RecipeMode.TRANSFORM;
-public List<RecipeOutputModifier> outputModifiers = List.of();
-public List<RecipeOutputModifier> tickOutputModifiers = List.of();
-public Map<ResourceLocation, AmbientEntry<?>> ambientConditions = Map.of();
+public class GoblinRecipe extends GTRecipe {
+    public RecipeMode mode = RecipeMode.TRANSFORM;
+    public Map<ResourceLocation, AmbientEntry<?>> ambientConditions = Map.of();
+    public List<RecipeOutputModifier> outputModifiers = List.of();
+    public List<RecipeOutputModifier> tickOutputModifiers = List.of();
+    // 构造器透传 GTRecipe 全部参数
+}
 ```
 
-### 9.2 RecipeLogic 改动
+`GTRecipe` 零改动。新配方用 `GoblinRecipe` 替代 `GTRecipe`，默认值保证未填充字段时行为与 GTM 一致。
 
-#### setupRecipe() 分支
+### 9.2 GoblinRecipeLogic（extends RecipeLogic）
+
+重写三个核心方法：
+
+**setupRecipe()** — 将 `duration × PROGRESS_SCALE`，重置 `progressRate`、`recipeContext`：
 
 ```java
+@Override
 public void setupRecipe(GTRecipe recipe) {
-    switch (recipe.mode) {
-        case TRANSFORM -> {
-            // 现有逻辑：handleRecipeIO(IN) 消耗输入
-        }
-        case MODIFY -> {
-            // 不消耗输入，快照 HOLD 槽位物品
-            recipeContext = new RecipeContext(recipe, machine);
-            recipeContext.captureHoldingInputs();
-            handleTickRecipeIO(recipe, IO.IN);
-        }
-        case AMBIENT -> {
-            // 不处理物品 IO，只更新 AmbientProviderTrait 的参数
-        }
+    super.setupRecipe(recipe);
+    if (lastRecipe == recipe) {
+        duration = recipe.duration * PROGRESS_SCALE;
+        progressRate = PROGRESS_SCALE;
+        recipeContext = new RecipeContext(recipe);
     }
 }
 ```
 
-#### onRecipeFinish() 分支
+**handleRecipeWorking()** — 条件检查 + ambientSatisfied + `progress += progressRate`：
 
 ```java
-public void onRecipeFinish() {
-    switch (lastRecipe.mode) {
-        case TRANSFORM -> { /* 现有：handleRecipeIO(OUT) */ }
-        case MODIFY -> {
-            applyOutputModifiers(lastRecipe, recipeContext);
-            recipeContext = null;
+@Override
+public void handleRecipeWorking() {
+    var conditionResult = RecipeHelper.checkConditions(lastRecipe, this);
+    if (conditionResult.isSuccess()) {
+        ambientSatisfied = true;
+        var handleTick = handleTickRecipe(lastRecipe);
+        if (handleTick.isSuccess()) {
+            setStatus(Status.WORKING);
+            if (!machine.onWorking()) { this.interruptRecipe(); return; }
+            progress += progressRate;
+            totalContinuousRunningTime++;
+        } else {
+            setWaiting(handleTick.reason());
+            ambientSatisfied = false;
+            // ... EU power failure delay logic unchanged ...
         }
+    } else {
+        ambientSatisfied = false;
+        setWaiting(conditionResult.reason());
     }
+    if (isWaiting() || isSuspend()) { regressRecipe(); }
 }
 ```
 
-#### handleRecipeWorking() 改写
+**onRecipeFinish()** — 保留父类逻辑，结束时清理 `recipeContext`。
 
-见 §7.3——条件检查 + failBehavior 分支 + RateMultiplier 乘积计算 + inputRate 缩放统一处理。
+**getProgress() / getMaxProgress()** — 对外返回除以 `PROGRESS_SCALE` 的值。
 
-### 9.3 RecipeRunner 改动
+### 9.3 与 RecipeRunner 的关系
 
-```java
-public class RecipeRunner {
-    private @Nullable RecipeContext context;
+RecipeRunner 通过 `RecipeHelper.handleRecipe()` 创建，不在 `GoblinRecipeLogic` 内直接持有引用。`tickOutputModifiers` 和 `outputModifiers` 的应用点待实现（需修改 RecipeRunner 或通过 mixin）。
 
-    private ActionResult handleContents() {
-        // ... 现有逻辑 ...
+### 9.4 降速与降耗的分工
 
-        // 每 tick 的 IN 阶段：按 inputRate 缩放消耗量
-        if (io == IO.IN && isTick && !simulated && context != null
-            && context.inputRate() < 1.0f) {
-            recipeContents = scaleContents(recipeContents, context.inputRate());
-        }
-
-        // OUT 阶段：应用 outputModifiers
-        if (io == IO.OUT && !simulated && context != null) {
-            context.applyOutputModifiers(recipe, recipeContents);
-        }
-        if (isTick && !simulated && context != null) {
-            context.applyTickOutputModifiers(recipe, recipeContents);
-        }
-    }
-}
-```
-
-**`scaleContents` 的逻辑**：将每个 `RecipeContent` 的 `amount` 乘以 `inputRate`（对 EU 和流体都适用——EU 是 long，流体是 int，统一 `(int)(amount * rate)`）。`inputRate = 1.0` 时跳过（绝大多数 tick 都是 1.0，零额外开销）。
-
-**为什么放 RecipeRunner 而不是 RecipeLogic**：RecipeLogic 只负责调度和工作状态，RecipeRunner 才是实际执行每个 capability IO 的地方。在这里缩放每次的消耗量最直接——不需要改 GTM 的内置 handler（`EnergyContainer.consume()` 等），也不需要为每种 capability 单独写适配。
+| 角色 | 职责 |
+|------|------|
+| `GoblinRecipeLogic` | `progressRate` 决定进度增加量。`ambientSatisfied` 标记条件状态 |
+| 动能子类 | `updateFromRPM(rpm)` 将转速映射为 progressRate。HALT_PROGRESS → 0 |
+| 带降速的 EU 子类 | 自维护 tick input 统计，`progressRate` 按趋势缩放 |
+| 降耗 | 机器子类在 `handleTickRecipeIO()` 重写中按 `progressRate / PROGRESS_SCALE` 缩放 IN 消耗 |
 
 ---
 
@@ -1182,55 +1121,28 @@ Create 的旋转动力系统涉及两个维度：
 | 配方启动条件 | `AmbientCondition` + `ambient_rpm` | 配方声明最低 RPM | 配方 JSON |
 | 配方运行保障 | `ConditionFailBehavior.HALT_PROGRESS` | 转速低于最低限 → 进度暂停 | `AmbientType` 声明 |
 | 配方安全阀 | `ConditionFailBehavior.INTERRUPT` | 转速超过 `ambient_max_rpm` → 立即中断 | `AmbientType` 声明 |
-| 配方执行速度 | `RPMProgressRate` | 转速 / optimalRPM → 速度倍率 | 机器注册 |
+| 配方执行速度 | `KineticRecipeLogic.updateFromRPM()` | 转速 / optimalRPM → progressRate | 机器子类 |
 | 扭矩消耗/产出 | `RecipeCapability` (tickInput/tickOutput) | 向网络声明 SU 需求或提供 SU/RPM | 机器 handler |
 
 ### 11.2 RPM 作为环境条件
 
 已在 §6.4 中完整定义——`goblinkinetic:ambient_rpm`（≥，HALT_PROGRESS）、`goblinkinetic:ambient_max_rpm`（≤，INTERRUPT）。
 
-### 11.3 RPMProgressRate — 转速影响加工速度
+### 11.3 RPM 影响加工速度
 
-不设速度上限——动能产能够强，加工就能够快。
+`KineticRecipeLogic extends GoblinRecipeLogic`，机器本体在自己的 tick 订阅中调用 `logic.updateFromRPM(currentRPM)` 更新 `progressRate`：
 
 ```java
-public class RPMProgressRate implements ProgressRateProvider {
-    private final float optimalRPM;
-
-    public RPMProgressRate(float optimalRPM) {
-        this.optimalRPM = optimalRPM;
-    }
-
-    @Override
-    public RateMultiplier getRate(ProgressRateContext ctx) {
-        if (!(ctx instanceof KineticProgressRateContext kinetic)) return RateMultiplier.FULL;
-        float absRPM = Math.abs(kinetic.rpm());
-        if (absRPM == 0f || optimalRPM == 0f) return RateMultiplier.HALTED;
-        return new RateMultiplier(absRPM / optimalRPM, 1.0f);
+public class KineticRecipeLogic extends GoblinRecipeLogic {
+    public void updateFromRPM(float currentRPM) {
+        if (!ambientSatisfied) { progressRate = 0; return; }
+        if (optimalRPM == 0f)  { progressRate = PROGRESS_SCALE; return; }
+        progressRate = (int)(Math.abs(currentRPM) / optimalRPM * PROGRESS_SCALE);
     }
 }
-
-// 在 MetaMachine 子类构造时注册：
-// public KineticMillstone(MachineDefinition def) {
-//     this.addProgressRateProvider(new ConstantProgressRate());
-//     this.addProgressRateProvider(new PowerShortfallProgressRate());
-//     this.addProgressRateProvider(new RPMProgressRate(16f));
-// }
-//
-// @Override
-// protected ProgressRateContext createProgressRateContext() {
-//     return new KineticProgressRateContext(recipe, recipeContext,
-//         availableEUt, requiredEUt, getSpeed());
-// }
 ```
 
-**效果**：
-- 转速 = optimalRPM → 速度 ×1.0
-- 转速 = optimalRPM × 10 → 速度 ×10.0（不设上限，靠齿轮箱限制）
-- 转速 = optimalRPM × 0.5 → 速度 ×0.5
-- 转速 = 0 → 速度 ×0
-
-**为什么不需要上限**：实际物理上限由 Create 的齿轮传动和应力网络自然约束——转速太高 → 应力消耗暴增 → 网络过载 → `ambient_rpm` 条件失败 → RecipeLogic 自动暂停。配方系统不需要额外加一个软上限。
+不设速度上限——`rpm = optimalRPM × 10` → `progressRate = 160`。实际上限由 Create 应力网络约束。
 
 ### 11.4 完整流程：Create 石磨粉碎骨头
 
@@ -1239,21 +1151,20 @@ public class RPMProgressRate implements ProgressRateProvider {
   ambientConditions: { rpm: 64.0 }
   duration: 200
 
-机器 KineticMillstone：
+机器 KineticMillstone（KineticRecipeLogic extends GoblinRecipeLogic）：
   → AmbientProviderTrait 提供 RPM = 128.0
-  → RPMProgressRate(optimalRPM = 128f)
-  → PowerShortfallProgressRate()
+  → optimalRPM = 128f
 
 tick 1（蒸汽引擎 128 RPM）：
   → AmbientCondition 检查: 128 ≥ 64 ✓, ambientSatisfied = true
-  → RPMProgressRate: 128/128 = 1.0
-  → multiplier=(1.0, 1.0) → progress += 1.0, input 全耗
+  → updateFromRPM(128): progressRate = 128/128 × 16 = 16
+  → progress += 16
 
 tick 100（锅炉缺水，转速降到 48 RPM）：
   → AmbientCondition 检查: 48 ≥ 64 ✗
   → failBehavior = HALT_PROGRESS
   → 状态保持 WORKING，ambientSatisfied = false
-  → provider 返回 0 → progress 冻结
+  → updateFromRPM(48): ambientSatisfied=false → progressRate = 0 → progress 冻结
 
 tick 150（锅炉加水，转速恢复 128 RPM）：
   → AmbientCondition 检查: 128 ≥ 64 ✓
@@ -1271,19 +1182,19 @@ tick 150（锅炉加水，转速恢复 128 RPM）：
 
 ### 12.1 新增机器的设计定位
 
-| 机器 | RecipeMode | Slot 配置 | Ambient 角色 | ProgressRateProvider | 实现位置 |
-|------|-----------|----------|-------------|---------------------|------------|
-| 缓冲器 | 无（纯储存） | BOTH + SPECIAL_FLUID | 无 | 无 | goblintech.machine |
-| 冰箱 | MODIFY | HOLD + INPUT | 自提供 COLD | Constant + PowerShortfall | goblintech.machine |
-| 提取机 | MODIFY | HOLD + INPUT | 自提供 HEAT | Constant + PowerShortfall | goblintech.machine |
-| 真空冷冻机 | TRANSFORM | INPUT + OUTPUT | 无 | Constant + PowerShortfall | goblintech.machine |
-| 冷库 | AMBIENT | 无 | 提供 COLD（带参数） | Constant + PowerShortfall | goblintech.machine |
-| 窑炉 | AMBIENT | 无 | 提供 HEAT（带参数） | Constant + PowerShortfall | goblintech.machine |
-| 超净间 | AMBIENT | 无 | 提供 CLEANROOM（带等级） | Constant + PowerShortfall | goblintech.machine |
-| GTM 老机器 | TRANSFORM | — | — | Constant | （不改动） |
-| 石磨（Create） | TRANSFORM | INPUT + OUTPUT | 提供 RPM | Constant + PowerShortfall + RPM | goblinkinetic |
-| 搅拌器（Create） | TRANSFORM | INPUT + OUTPUT | 提供 RPM | Constant + PowerShortfall + RPM | goblinkinetic |
-| 辊压机（Create） | TRANSFORM | INPUT + OUTPUT | 提供 RPM | Constant + PowerShortfall + RPM | goblinkinetic |
+| 机器 | RecipeMode | Slot 配置 | Ambient 角色 | 实现位置 |
+|------|-----------|----------|-------------|------------|
+| 缓冲器 | 无（纯储存） | BOTH + SPECIAL_FLUID | 无 | goblintech.machine |
+| 冰箱 | MODIFY | HOLD + INPUT | 自提供 COLD | goblintech.machine |
+| 提取机 | MODIFY | HOLD + INPUT | 自提供 HEAT | goblintech.machine |
+| 真空冷冻机 | TRANSFORM | INPUT + OUTPUT | 无 | goblintech.machine |
+| 冷库 | AMBIENT | 无 | 提供 COLD（带参数） | goblintech.machine |
+| 窑炉 | AMBIENT | 无 | 提供 HEAT（带参数） | goblintech.machine |
+| 超净间 | AMBIENT | 无 | 提供 CLEANROOM（带等级） | goblintech.machine |
+| GTM 老机器 | TRANSFORM | — | — | （不改动） |
+| 石磨（Create） | TRANSFORM | INPUT + OUTPUT | 提供 RPM | goblinkinetic |
+| 搅拌器（Create） | TRANSFORM | INPUT + OUTPUT | 提供 RPM | goblinkinetic |
+| 辊压机（Create） | TRANSFORM | INPUT + OUTPUT | 提供 RPM | goblinkinetic |
 
 ### 12.2 与 GTM 现有机器的兼容
 
@@ -1297,77 +1208,30 @@ tick 150（锅炉加水，转速恢复 128 RPM）：
 
 ---
 
-## 13. Mixin 剥离指引
+## 13. 剥离策略与 Mixin 清单
 
-若未来将 goblinrecipe / goblinmachine / goblintfc 剥离为独立附属模组，需要以下 Mixin：
+### 13.1 当前阶段：继承式开发（零 Mixin）
 
-### 13.1 GTRecipe Mixin
+`GoblinRecipe extends GTRecipe`、`GoblinRecipeLogic extends RecipeLogic`。GTCEu 源码零改动。新机器通过 `createRecipeLogic()` 工厂方法接入。
 
-```java
-@Mixin(GTRecipe.class)
-public abstract class GTRecipeMixin {
-    @Unique
-    private RecipeMode goblinRecipe$mode = RecipeMode.TRANSFORM;
+需要 Mixin 的部分：
+- `RecipeRunner` 的 `handleContents()` — 应用 `outputModifiers` / `tickOutputModifiers`
 
-    @Unique
-    private List<RecipeOutputModifier> goblinRecipe$outputModifiers = List.of();
+### 13.2 剥离后的 Mixin（备查）
 
-    @Unique
-    private List<RecipeOutputModifier> goblinRecipe$tickOutputModifiers = List.of();
+若未来不直接依赖 GTM 源码、走附属模组路线：
 
-    @Unique
-    private Map<ResourceLocation, AmbientEntry<?>> goblinRecipe$ambientConditions = Map.of();
-
-    @Inject(method = "<init>", at = @At("TAIL"))
-    private void onInit(CallbackInfo ci) {
-        // 从配方 JSON 数据读取并设置以上字段
-    }
-}
-```
-
-### 13.2 RecipeLogic Mixin
-
-```java
-@Mixin(RecipeLogic.class)
-public abstract class RecipeLogicMixin {
-    @Inject(method = "setupRecipe", at = @At("HEAD"), cancellable = true)
-    private void onSetupRecipe(GTRecipe recipe, CallbackInfo ci) {
-        if (recipe.goblinRecipe$mode == RecipeMode.MODIFY) {
-            handleModifySetup(recipe);
-            ci.cancel();
-        }
-        if (recipe.goblinRecipe$mode == RecipeMode.AMBIENT) {
-            handleAmbientSetup(recipe);
-            ci.cancel();
-        }
-    }
-}
-```
-
-### 13.3 RecipeRunner Mixin / Extension
-
+**RecipeRunner Mixin**：
 ```java
 @Mixin(RecipeRunner.class)
 public class RecipeRunnerMixin {
-    @Unique private RecipeContext goblinRecipe$context;
-
     @Inject(method = "handleContents", at = @At("TAIL"))
-    private void onHandleContents(CallbackInfoReturnable<ActionResult> cir) {
-        if (io == IO.OUT && !simulated && goblinRecipe$context != null) {
-            goblinRecipe$context.applyOutputModifiers(recipe, recipeContents);
-        }
-        if (isTick && !simulated && goblinRecipe$context != null) {
-            goblinRecipe$context.applyTickOutputModifiers(recipe, recipeContents);
+    private void applyOutputModifiers(CallbackInfoReturnable<ActionResult> cir) {
+        if (io == IO.OUT && recipe instanceof GoblinRecipe gr) {
+            gr.outputModifiers.forEach(m -> m.apply(recipe, outputs));
         }
     }
 }
 ```
 
-### 13.4 为何直接修改源码 > Mixin（当前阶段）
-
-当前是 CoreMod 深度重构项目，直接修改 GTM 源码的原因：
-
-1. **构建简化**：避免 Mixin 的 AP 处理开销和兼容性检查
-2. **调试便利**：断点直接打在修改位置，而非 Mixin 注入的合成方法
-3. **重构完整**：可以调整构造函数签名、内部调用链，而 Mixin 只能插入/环绕
-4. **后续再剥离**：完成后再根据上述清单逆向写 Mixin，比打补丁式开发更健壮
+**注意**：`WorkableTieredMachine.createRecipeLogic()` 无需 Mixin——直接在机器子类中覆盖即可。RecipeLogic 也未修改——走子类覆盖。`GoblinRecipe` 也不依赖 Mixin 注入。整体 Mixin 需求远小于旧方案。
