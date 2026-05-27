@@ -9,7 +9,6 @@ import com.gregtechceu.gtceu.api.recipe.chance.logic.ChanceLogic;
 import com.gregtechceu.gtceu.api.recipe.content.Content;
 
 import com.goblincoders.goblintech.recipe.api.RecipeMode;
-import com.goblincoders.goblintech.recipe.api.ambient.AmbientEntry;
 import com.goblincoders.goblintech.recipe.api.modifier.RecipeOutputModifier;
 
 import net.minecraft.nbt.CompoundTag;
@@ -24,7 +23,6 @@ import java.util.Map;
 public class GoblinRecipe extends GTRecipe {
 
     public RecipeMode mode = RecipeMode.TRANSFORM;
-    public Map<ResourceLocation, AmbientEntry<?>> ambientConditions = Map.of();
     public List<RecipeOutputModifier> outputModifiers = List.of();
     public List<RecipeOutputModifier> tickOutputModifiers = List.of();
 
