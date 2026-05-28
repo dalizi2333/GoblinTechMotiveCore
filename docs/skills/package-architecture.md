@@ -11,10 +11,9 @@
 | 包名 | 所属顶层包 | 职责 | 说明 |
 |------|-----------|------|------|
 | `goblintech` | `com.goblincoders.goblintech` | **主游戏内容** | 配方链设计、电压限制到 IV、核心常量 |
-| `goblintech.recipe` | `com.goblincoders.goblintech.recipe` | **配方系统扩展** | GoblinRecipe、GoblinRecipeLogic、RecipeMode、AmbientType 等核心架构 |
+| `goblintech.recipe` | `com.goblincoders.goblintech.recipe` | **配方系统扩展** | GoblinScripture、GoblinOracleOfScripture、IBelieverOfScripture、RecipeMode 等核心架构 |
 | `goblintech.machine` | `com.goblincoders.goblintech.machine` | **机器逻辑** | 重写 GTM 机器底层逻辑（SlotMode、缓冲器、冰箱、提取机等） |
 | `goblintech.power` | `com.goblincoders.goblintech.power` | **电力系统** | 重写电力系统，计划迁移到 CEE |
-| `goblintech.create.kinetic` | `com.goblincoders.goblintech.create.kinetic` | **机械动力联动** | Create 动能支持，借用 Create 渲染库 |
 | `goblinmotive` | `com.goblincoders.goblinmotive` | **物理化支持** | 基- 于 SABLE 物理化引擎实现 Valkyrien Skies / Create Aeronautics 兼容 |
 | `goblintfc` | `com.goblincoders.goblintfc` | **TFC 支持** | TerraFirmaCraft 兼容 |
 | `goblintape` | `com.goblincoders.goblintape` | **联动配方** | 跨模组整合包的"胶带"式联-动配方 |
