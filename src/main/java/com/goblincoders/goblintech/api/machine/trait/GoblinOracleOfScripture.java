@@ -1,74 +1,107 @@
-package com.goblincoders.goblintech.recipe;
+package com.goblincoders.goblintech.api.machine.trait;
 
 import com.gregtechceu.gtceu.api.capability.recipe.IO;
-import com.gregtechceu.gtceu.api.capability.recipe.RecipeCapability;
-import com.gregtechceu.gtceu.api.machine.feature.IRecipeLogicMachine;
 import com.gregtechceu.gtceu.api.machine.multiblock.MultiblockControllerMachine;
 import com.gregtechceu.gtceu.api.machine.trait.RecipeLogic;
 import com.gregtechceu.gtceu.api.recipe.ActionResult;
 import com.gregtechceu.gtceu.api.recipe.GTRecipe;
-import com.gregtechceu.gtceu.api.recipe.RecipeCondition;
 import com.gregtechceu.gtceu.common.cover.MachineControllerCover;
 import com.gregtechceu.gtceu.utils.GTMath;
 
-import com.goblincoders.goblintech.recipe.api.recipe.RecipeContext;
+import com.goblincoders.goblintech.api.machine.feature.IBelieverOfScripture;
+import com.goblincoders.goblintech.api.recipe.condition.IDivineDecreeOfScripture;
+import com.goblincoders.goblintech.api.recipe.RecipeContext;
 
 import net.minecraft.network.chat.Component;
 
 import org.jetbrains.annotations.Nullable;
 
-public class GoblinRecipeLogic extends RecipeLogic {
+/**
+ * 【神棍描述】经文神谕者 — 配方之神在人间的代言人
+ *
+ * <p>【工程描述】配方执行逻辑控制器，继承自 GTCEu {@link RecipeLogic}。
+ * 负责解析经文数据、评估信徒状态、管理工作进度、处理能量输入输出。
+ *
+ * <p>【核心职责】
+ * <ul>
+ *   <li>解读经文：解析 {@link com.goblincoders.goblintech.api.recipe.GoblinScripture} 中的配方数据</li>
+ *   <li>评估信徒：通过 {@link #assessBelieverState()} 计算虔诚度与神圣努力</li>
+ *   <li>验证神谕：检查 {@link IDivineDecreeOfScripture} 条件</li>
+ * </ul>
+ */
+public class GoblinOracleOfScripture extends RecipeLogic {
 
     private static final Component PROGRESS_FROZEN_REASON = Component.translatable("goblintech.recipe.progress_frozen");
 
-    protected @Nullable RecipeContext recipeContext;
-    protected int tickPowerInput;
-    protected int tickPowerOutput;
+    protected @Nullable RecipeContext scriptureContext;
+    protected int divineDemand;
+    protected int divineOffering;
 
-    public GoblinRecipeLogic(IRecipeLogicMachine machine) {
-        super(machine);
+    public GoblinOracleOfScripture(IBelieverOfScripture believer) {
+        super(believer);
     }
 
-    private IGoblinRecipeLogicMachine gm() {
-        return (IGoblinRecipeLogicMachine) machine;
+    private IBelieverOfScripture believer() {
+        return (IBelieverOfScripture) machine;
     }
 
+    /**
+     * @return 表示"进度冻结"的 ActionResult（isSuccess=true，reason=PROGRESS_FROZEN_REASON）
+     */
     public static ActionResult frozen() {
         return new ActionResult(true, PROGRESS_FROZEN_REASON, null, null);
     }
 
+    /**
+     * @return 是否是进度冻结状态
+     */
     public static boolean isFrozen(ActionResult result) {
         return result.isSuccess() && result.reason() == PROGRESS_FROZEN_REASON;
     }
 
+    /**
+     * 【神棍描述】获取已完成的经文份数
+     *
+     * <p>【工程描述】对外展示进度时除以 blessedEffort，消除内部精度缩放。
+     */
     @Override
     public int getProgress() {
-        return progress / gm().getProgressScale();
+        return progress / believer().getBlessedEffort();
     }
 
+    /**
+     * 【神棍描述】获取经文总份数
+     *
+     * <p>【工程描述】对外展示总进度时除以 blessedEffort。
+     */
     @Override
     public int getMaxProgress() {
-        return duration / gm().getProgressScale();
+        return duration / believer().getBlessedEffort();
     }
 
     @Override
     public void resetRecipeLogic() {
         super.resetRecipeLogic();
-        recipeContext = null;
+        scriptureContext = null;
     }
 
+    /**
+     * 【神棍描述】解读经文
+     *
+     * <p>【工程描述】从配方中提取 duration、divineDemand、divineOffering，应用进度缩放。
+     */
     @Override
     public void setupRecipe(GTRecipe recipe) {
         super.setupRecipe(recipe);
         if (lastRecipe == recipe) {
-            duration = recipe.duration * gm().getProgressScale();
-            recipeContext = new RecipeContext(recipe);
-            tickPowerInput = extractTickPower(recipe, IO.IN);
-            tickPowerOutput = extractTickPower(recipe, IO.OUT);
+            duration = recipe.duration * believer().getBlessedEffort();
+            scriptureContext = new RecipeContext(recipe);
+            divineDemand = extractDivineDemand(recipe, IO.IN);
+            divineOffering = extractDivineDemand(recipe, IO.OUT);
         }
     }
 
-    private static int extractTickPower(GTRecipe recipe, IO io) {
+    private static int extractDivineDemand(GTRecipe recipe, IO io) {
         var contentMap = io == IO.IN ? recipe.tickInputs : recipe.tickOutputs;
         for (var entry : contentMap.entrySet()) {
             var capability = entry.getKey();
@@ -97,7 +130,7 @@ public class GoblinRecipeLogic extends RecipeLogic {
                 progress = 0;
                 duration = 0;
                 isActive = false;
-                recipeContext = null;
+                scriptureContext = null;
                 lastRecipe = null;
                 return;
             }
@@ -122,15 +155,25 @@ public class GoblinRecipeLogic extends RecipeLogic {
                 progress = 0;
                 duration = 0;
                 isActive = false;
-                recipeContext = null;
+                scriptureContext = null;
             }
         }
     }
 
+    /**
+     * 【神棍描述】执行神圣工作循环 — 每 tick 的主循环
+     *
+     * <p>【工程描述】调用 {@link #assessBelieverState()} 评估信徒状态，根据结果决定：
+     * <ul>
+     *   <li>SUCCESS + 非冻结：progress += divineEffort</li>
+     *   <li>SUCCESS + 冻结：progress 不变，保持 WORKING</li>
+     *   <li>失败：runDelay 退避，省 tick</li>
+     * </ul>
+     */
     @Override
     public void handleRecipeWorking() {
         assert lastRecipe != null;
-        var powerResult = handlePowerStacks();
+        var powerResult = assessBelieverState();
         if (powerResult.isSuccess()) {
             if (isFrozen(powerResult)) {
                 setStatus(Status.WORKING);
@@ -139,7 +182,7 @@ public class GoblinRecipeLogic extends RecipeLogic {
             } else {
                 setStatus(Status.WORKING);
                 if (!machine.onWorking()) { this.interruptRecipe(); return; }
-                progress += gm().getProgressRate();
+                progress += believer().getDivineEffort();
                 totalContinuousRunningTime++;
             }
         } else {
@@ -168,36 +211,57 @@ public class GoblinRecipeLogic extends RecipeLogic {
         }
     }
 
-    protected ActionResult handlePowerStacks() {
-        IGoblinRecipeLogicMachine gm = gm();
+    /**
+     * 【神棍描述】评估信徒状态 — 检查能量输入输出，计算虔诚度与神圣努力
+     *
+     * <p>【工程描述】核心每 tick 逻辑：
+     * <ol>
+     *   <li>调用 {@link IBelieverOfScripture#evaluateDivineConsumption(int)}</li>
+     *   <li>调用 {@link IBelieverOfScripture#evaluateDivineOffering(int)}</li>
+     *   <li>计算虔诚度 ({@link IBelieverOfScripture#calculatePietyLevel()})</li>
+     *   <li>确定神圣努力 ({@link IBelieverOfScripture#determineDivineEffort()})</li>
+     *   <li>验证神谕 ({@link #verifyDivineDecree()})</li>
+     *   <li>执行神圣工作 ({@link IBelieverOfScripture#performDivineWork()})</li>
+     * </ol>
+     */
+    protected ActionResult assessBelieverState() {
+        IBelieverOfScripture believer = believer();
 
-        if (tickPowerInput != 0) gm.updateConsumeRate(tickPowerInput);
-        else gm.setConsumePowerRate(1f);
+        if (divineDemand != 0) believer.evaluateDivineConsumption(divineDemand);
+        else believer.setConsumeRate(1f);
 
-        if (tickPowerOutput != 0) gm.updatePushRate(tickPowerOutput);
-        else gm.setPushPowerRate(1f);
+        if (divineOffering != 0) believer.evaluateDivineOffering(divineOffering);
+        else believer.setOfferRate(1f);
 
-        gm.updatePowerRate();
-        gm.updateProgressRate();
+        believer.calculatePietyLevel();
+        believer.determineDivineEffort();
 
-        var condResult = checkConditions();
-        if (!condResult.isSuccess()) return condResult;
+        var decreeResult = verifyDivineDecree();
+        if (!decreeResult.isSuccess()) return decreeResult;
 
-        if (gm.getProgressRate() == 0) return frozen();
+        if (believer.getDivineEffort() == 0) return frozen();
 
-        return gm.applyPowerStacks();
+        return believer.performDivineWork();
     }
 
-    protected ActionResult checkConditions() {
+    /**
+     * 【神棍描述】验证神谕 — 检查所有经文条件是否满足
+     *
+     * <p>【工程描述】遍历 {@link GTRecipe#conditions}，同时兼容 GTM 原生 RecipeCondition 与 {@link IDivineDecreeOfScripture}。
+     * 未显式声明 MinPowerRateCondition 时，默认 pietyLevel < 0.5 触发 WAITING。
+     *
+     * @return SUCCESS 如果所有条件满足
+     */
+    protected ActionResult verifyDivineDecree() {
         boolean hasMinPowerRate = false;
 
         for (var condition : lastRecipe.conditions) {
-            if (condition instanceof IGoblinCondition) {
+            if (condition instanceof IDivineDecreeOfScripture) {
                 hasMinPowerRate = true;
             }
             if (!condition.check(lastRecipe, this)) {
-                if (condition instanceof IGoblinCondition gc) {
-                    return switch (gc.getFailBehavior()) {
+                if (condition instanceof IDivineDecreeOfScripture decree) {
+                    return switch (decree.getFailBehavior()) {
                         case WAITING -> ActionResult.fail(condition.getTooltips(), null, null);
                         case HALT_PROGRESS -> frozen();
                         case INTERRUPT -> {
@@ -210,9 +274,9 @@ public class GoblinRecipeLogic extends RecipeLogic {
             }
         }
 
-        if (!hasMinPowerRate && gm().getPowerRate() < 0.5f) {
+        if (!hasMinPowerRate && believer().getPietyLevel() < 0.4f) {
             return ActionResult.fail(
-                    Component.translatable("goblintech.recipe.condition.min_power_rate", 0.5f), null, null);
+                    Component.translatable("goblintech.recipe.condition.min_power_rate", 0.4f), null, null);
         }
 
         return ActionResult.SUCCESS;
@@ -225,7 +289,7 @@ public class GoblinRecipeLogic extends RecipeLogic {
             setStatus(Status.IDLE);
             progress = 0;
             duration = 0;
-            recipeContext = null;
+            scriptureContext = null;
         }
     }
 }

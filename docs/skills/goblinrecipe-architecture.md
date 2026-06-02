@@ -9,7 +9,7 @@
 1. **配方输出修改器（RecipeOutputModifier）**：在配方产出输出物品/流体时，根据匹配到的输入动态修改输出内容（复制 NBT、trait、food 属性等）。
 2. **参数化 RecipeCondition + 失败行为**：继承 GTM 原生的 `RecipeCondition` 体系，通过 `IDivineDecreeOfScripture` 接口扩展失败行为（WAITING / HALT_PROGRESS / INTERRUPT）。
 3. **多种配方执行模式（RecipeMode）**：TRANSFORM（物品搬运型）、MODIFY（原地修改型）、AMBIENT（环境提供型）。
-4. **GraceStack/OfferingStack 可变速加工**：信徒机器自管理 `graceStock`/`offeringStock`，神谕者每 tick 通过 `assessBelieverState()` 计算虔诚度与神圣努力，天然兼容多种能量、降速运行。
+4. **OfferingStack/BlessingStack 可变速加工**：信徒机器自管理 `offeringStock`/`blessingStock`，神谕者每 tick 通过 `assessBelieverState()` 计算虔诚度与神圣努力，天然兼容多种能量、降速运行。
 5. **可扩展 RecipeCapability**：热量、扭矩等模块特有资源与 Power 同级，统一走 tickInput/tickOutput。
 
 ### 1.2 设计原则
@@ -42,8 +42,9 @@
 
 ```
 IBelieverOfScripture (extends IRecipeLogicMachine)
-  └─ GraceStack/OfferingStack 属性 + consumeRate/offerRate/pietyLevel/divineEffort
-  └─ consumeDivinePower() / offerDivinePower() / performDivineWork()
+  └─ OfferingStack/BlessingStack 属性 + offerRate/pourRate/pietyLevel/divineEffort
+  └─ receiveOffering() / pourBlessing() / performDivineWork()
+```
 
 GTRecipe (GTM, 零改动)
   └─ GoblinScripture (mode + outputModifiers + tickOutputModifiers)
@@ -73,45 +74,45 @@ public class MyGoblinMachine extends WorkableTieredMachine implements IBelieverO
 //   getProgressScale()             → getBlessedEffort()
 //   getProgressRate()              → getDivineEffort()
 //   getPowerRate()                 → getPietyLevel()
-//   getConsumePowerRate()          → getConsumeRate()
-//   getPushPowerRate()             → getOfferRate()
-//   updateConsumeRate()            → evaluateDivineConsumption()
-//   updatePushRate()               → evaluateDivineOffering()
+//   getConsumePowerRate()          → getOfferRate()
+//   getPushPowerRate()             → getPourRate()
+//   updateConsumeRate()            → evaluateOffering()
+//   updatePushRate()               → evaluateBlessing()
 //   updatePowerRate()              → calculatePietyLevel()
 //   updateProgressRate()           → determineDivineEffort()
 //   applyPowerStacks()             → performDivineWork()
-//   updateConsumePower()           → consumeDivinePower()
-//   updatePushPower()              → offerDivinePower()
-//   getInputPowerStack()           → getGraceStock()
-//   getOutputPowerStack()          → getOfferingStock()
-//   getInputPowerStackSize()       → getGraceCapacity()
-//   getOutputPowerStackSize()      → getOfferingCapacity()
-//   getSafeInputThreshold()        → getGraceThreshold()
-//   getSafeOutputThreshold()       → getOfferingThreshold()
+//   updateConsumePower()           → receiveOffering()
+//   updatePushPower()              → pourBlessing()
+//   getInputPowerStack()           → getOfferingStock()
+//   getOutputPowerStack()          → getBlessingStock()
+//   getInputPowerStackSize()       → getOfferingCapacity()
+//   getOutputPowerStackSize()      → getBlessingCapacity()
+//   getSafeInputThreshold()        → getOfferingThreshold()
+//   getSafeOutputThreshold()       → getBlessingThreshold()
 ```
 
-### 3.1 GraceStock/OfferingStack 属性
+### 3.1 OfferingStack/BlessingStack 属性
 
 ```java
 public interface IBelieverOfScripture extends IRecipeLogicMachine {
 
-    // ===== GraceStack（圣恩容槽）容量与状态 =====
-    int getGraceCapacity();
+    // ===== OfferingStack（祭品容槽）容量与状态 =====
     int getOfferingCapacity();
-    int getGraceStock();
-    void setGraceStock(int value);
+    int getBlessingCapacity();
     int getOfferingStock();
     void setOfferingStock(int value);
+    int getBlessingStock();
+    void setBlessingStock(int value);
 
     // ===== 安全阈值 =====
-    int getGraceThreshold();
     int getOfferingThreshold();
+    int getBlessingThreshold();
 
     // ===== 速率（由神谕者 assessBelieverState 计算并设置） =====
-    float getConsumeRate();
-    void setConsumeRate(float rate);
     float getOfferRate();
     void setOfferRate(float rate);
+    float getPourRate();
+    void setPourRate(float rate);
     float getPietyLevel();
     void setPietyLevel(float rate);
     int getDivineEffort();
@@ -120,59 +121,59 @@ public interface IBelieverOfScripture extends IRecipeLogicMachine {
     // ===== 神恩加持的努力（基础工作速率，进度缩放因子） =====
     default int getBlessedEffort() { return 16; }
 
-    // ===== 内部计数器（由 consumeDivinePower / offerDivinePower 设置） =====
-    int getGraceReceived();
-    void setGraceReceived(int value);
-    int getGraceOffered();
-    void setGraceOffered(int value);
+    // ===== 内部计数器（由 receiveOffering / pourBlessing 设置） =====
+    int getOfferingReceived();
+    void setOfferingReceived(int value);
+    int getBlessingPoured();
+    void setBlessingPoured(int value);
 }
 ```
 
 ### 3.2 信徒响应方法
 
 ```java
-// 子类必须覆写。默认给 graceStock 归零、设置 graceReceived = 0。
-default ActionResult consumeDivinePower(int tickPowerInput) {
-    setGraceStock(0);
-    setGraceReceived(0);
+// 子类必须覆写。默认给 offeringStock 归零、设置 offeringReceived = 0。
+default ActionResult receiveOffering(int tickOfferingInput) {
+    setOfferingStock(0);
+    setOfferingReceived(0);
     return ActionResult.SUCCESS;
 }
 
-// 子类必须覆写。默认填满 offeringStock、设置 graceOffered = 0。
-default ActionResult offerDivinePower(int tickPowerOutput) {
-    setOfferingStock(getOfferingCapacity());
-    setGraceOffered(0);
+// 子类必须覆写。默认填满 blessingStock、设置 blessingPoured = 0。
+default ActionResult pourBlessing(int tickBlessingOutput) {
+    setBlessingStock(getBlessingCapacity());
+    setBlessingPoured(0);
     return ActionResult.SUCCESS;
 }
 
 // 以下由神谕者 GoblinOracleOfScripture.assessBelieverState() 调用
-default void evaluateDivineConsumption(int tickPowerInput) {
-    var result = consumeDivinePower(tickPowerInput);
-    if (!result.isSuccess()) { setConsumeRate(0); return; }
-    if (getGraceStock() < getGraceThreshold())
-        setConsumeRate(Math.min(1f, (float) getGraceReceived() / tickPowerInput));
-    else
-        setConsumeRate(1f);
-}
-
-default void evaluateDivineOffering(int tickPowerOutput) {
-    var result = offerDivinePower(tickPowerOutput);
+default void evaluateOffering(int tickOfferingInput) {
+    var result = receiveOffering(tickOfferingInput);
     if (!result.isSuccess()) { setOfferRate(0); return; }
-    if (getOfferingStock() > getOfferingThreshold())
-        setOfferRate(Math.min(1f, (float) getGraceOffered() / tickPowerOutput));
+    if (getOfferingStock() < getOfferingThreshold())
+        setOfferRate(Math.min(1f, (float) getOfferingReceived() / tickOfferingInput));
     else
         setOfferRate(1f);
 }
 
+default void evaluateBlessing(int tickBlessingOutput) {
+    var result = pourBlessing(tickBlessingOutput);
+    if (!result.isSuccess()) { setPourRate(0); return; }
+    if (getBlessingStock() > getBlessingThreshold())
+        setPourRate(Math.min(1f, (float) getBlessingPoured() / tickBlessingOutput));
+    else
+        setPourRate(1f);
+}
+
 default void calculatePietyLevel() {
-    setPietyLevel(Math.min(getConsumeRate(), getOfferRate()));
+    setPietyLevel(Math.min(getOfferRate(), getPourRate()));
 }
 
 default void determineDivineEffort() {
     setDivineEffort((int) (getPietyLevel() * getBlessedEffort()));
 }
 
-// 子类必须覆写：实际执行 power stack 充能/放能
+// 子类必须覆写：实际执行祭品/祝福 充能/放能
 default ActionResult performDivineWork() {
     return ActionResult.FAIL_NO_CAPABILITIES;
 }
@@ -201,8 +202,69 @@ public enum RecipeMode {
     TRANSFORM,  // 物品搬运型（默认，与 GTCEu 行为一致）
     MODIFY,     // 原地修改型：输入不消耗，输出原地修改
     AMBIENT     // 环境提供型：不处理物品 IO
+    TRANSFER,   // 供奉展示型：输入不消耗，输出独立产物（仪式等场景）
 }
 ```
+
+### 4.2 consumeInputs（输入不消耗）
+
+```java
+// GoblinScripture 新增字段
+public boolean consumeInputs = true;  // 默认 true，与 GTCEu 行为一致
+```
+
+当 `consumeInputs = false` 时，`GoblinOracleOfScripture` 在配方完成后**不清空输入槽位**，输入物品原封不动保留。用户下次触发配方时可复用同一套供奉品。
+
+> 与 `RecipeMode.MODIFY` 的区别：`MODIFY` 是"输入不消耗但原地修改"（如物品 NBT 变更），`TRANSFER` 是"输入展示、独立产出"（仪式：供奉钢块展示给神明 → 神明回赐蓝图，钢块不扣）。两者共享"输入不消耗"机制，但语义不同。
+
+### 4.3 fromOracleTemplate（配方自动生成）
+
+`GoblinScripture` 新增一个简洁构造器，6 个空 `Map.of()`（除 tickInputs 外的 tick output + chance）藏进父类参数默认值：
+
+```java
+// GoblinScripture.java 新增构造器
+public GoblinScripture(GTRecipeType recipeType,
+                       Map<RecipeCapability<?>, List<Content>> inputs,
+                       Map<RecipeCapability<?>, List<Content>> outputs,
+                       Map<RecipeCapability<?>, List<Content>> tickInputs,
+                       int duration) {
+    super(recipeType, inputs, outputs, tickInputs,
+          Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+          List.of(), new CompoundTag(), duration,
+          recipeType.getCategory("default"), 0);
+}
+```
+
+然后 `fromOracleTemplate` 干净多了：
+
+```java
+public static GoblinScripture fromOracleTemplate(
+        OracleTemplate template, ResourceLocation definitionId) {
+
+    Map<Block, Integer> counts = template.countBlocks();
+    int totalBlocks = counts.values().stream().mapToInt(i -> i).sum();
+
+    var scripture = new GoblinScripture(
+        GTOracleOfScripture.DEITY_RITUAL,
+        counts.entrySet().stream()
+            .collect(Collectors.toMap(
+                e -> ItemRecipeCapability.CAP,
+                e -> List.of(new Content(e.getKey().asItem().getDefaultInstance(), e.getValue()))
+            )),
+        Map.of(ItemRecipeCapability.CAP, List.of(new Content(
+            GoblinShamanItem.getIdFor(definitionId), 1))),
+        Map.of(),   // tickInputs 暂空（待 PowerRecipeCapability 方案确定后改为 3 EU/t）
+        Math.max(20, totalBlocks * 20));
+
+    scripture.mode = RecipeMode.TRANSFER;
+    scripture.consumeInputs = false;
+    return scripture;
+}
+```
+
+> `fromOracleTemplate` 是纯数据映射：遍历 `blockTypes[]` 去重计数 → 构造 `inputs` Map → 产出 1 个指定物品。
+>
+> **JEI 可见性**：`DEITY_RITUAL` 注册时必须调用 `setXEIVisible(false)`。仪式配方仅用于机器执行，JEI 中不单独开配方页——由多方块 Tier 1 结构预览接替（参幽灵外壳文档 §8.7.16）。
 
 ---
 
@@ -344,7 +406,7 @@ public class ColdCondition extends RecipeCondition<ColdCondition>
 
 ---
 
-## 8. GraceStack/OfferingStack 可变速加工（神圣评估）
+## 8. OfferingStack/BlessingStack 可变速加工（神圣评估）
 
 ### 8.1 核心流程
 
@@ -353,21 +415,21 @@ public class ColdCondition extends RecipeCondition<ColdCondition>
   │
   └─ assessBelieverState()
        │
-       ├─ divineDemand != 0 ?
-       │   └─ believer.evaluateDivineConsumption(divineDemand)
-       │       ├─ believer.consumeDivinePower() → 子类映射 Power → graceStock
-       │       └─ graceStock < graceThreshold ?
-       │            consumeRate = graceReceived / divineDemand (≤1)
-       │          : consumeRate = 1
-       │
-       ├─ divineOffering != 0 ?
-       │   └─ believer.evaluateDivineOffering(divineOffering)
-       │       ├─ believer.offerDivinePower() → 子类映射 Power → offeringStock
-       │       └─ offeringStock > offeringThreshold ?
-       │            offerRate = graceOffered / divineOffering (≤1)
+       ├─ offeringDemand != 0 ?
+       │   └─ believer.evaluateOffering(offeringDemand)
+       │       ├─ believer.receiveOffering() → 子类映射祭品 → offeringStock
+       │       └─ offeringStock < offeringThreshold ?
+       │            offerRate = offeringReceived / offeringDemand (≤1)
        │          : offerRate = 1
        │
-       ├─ believer.calculatePietyLevel() → pietyLevel = min(consumeRate, offerRate)
+       ├─ blessingYield != 0 ?
+       │   └─ believer.evaluateBlessing(blessingYield)
+       │       ├─ believer.pourBlessing() → 子类映射祝福 → blessingStock
+       │       └─ blessingStock > blessingThreshold ?
+       │            pourRate = blessingPoured / blessingYield (≤1)
+       │          : pourRate = 1
+       │
+       ├─ believer.calculatePietyLevel() → pietyLevel = min(offerRate, pourRate)
        ├─ believer.determineDivineEffort() → divineEffort = pietyLevel × blessedEffort
        │
        ├─ verifyDivineDecree() → 遍历 GoblinScripture.conditions
@@ -428,11 +490,11 @@ public void executeDivineWorkCycle() {
 protected ActionResult assessBelieverState() {
     IBelieverOfScripture believer = believer();
 
-    if (divineDemand != 0) believer.evaluateDivineConsumption(divineDemand);
-    else believer.setConsumeRate(1f);
-
-    if (divineOffering != 0) believer.evaluateDivineOffering(divineOffering);
+    if (offeringDemand != 0) believer.evaluateOffering(offeringDemand);
     else believer.setOfferRate(1f);
+
+    if (blessingYield != 0) believer.evaluateBlessing(blessingYield);
+    else believer.setPourRate(1f);
 
     believer.calculatePietyLevel();
     believer.determineDivineEffort();
@@ -568,12 +630,12 @@ public enum SlotMode {
 ```java
 // 工程→神话: GoblinRecipeLogic → GoblinOracleOfScripture
 // 工程→神话: recipeContext → scriptureContext
-// 工程→神话: tickPowerInput → divineDemand
-// 工程→神话: tickPowerOutput → divineOffering
+// 工程→神话: tickPowerInput → offeringDemand
+// 工程→神话: tickPowerOutput → blessingYield
 public class GoblinOracleOfScripture extends RecipeLogic {
     protected @Nullable RecipeContext scriptureContext;
-    protected int divineDemand;
-    protected int divineOffering;
+    protected int offeringDemand;
+    protected int blessingYield;
 
     public GoblinOracleOfScripture(IBelieverOfScripture believer) {
         super(believer);
@@ -589,7 +651,7 @@ public class GoblinOracleOfScripture extends RecipeLogic {
 
 | 神谕者方法 | 工程对应 | 改动 |
 |-----------|---------|------|
-| `interpretScripture()` | `setupRecipe()` | `duration = recipe.duration × blessedEffort`；缓存 `divineDemand/divineOffering` |
+| `interpretScripture()` | `setupRecipe()` | `duration = recipe.duration × blessedEffort`；缓存 `offeringDemand/blessingYield` |
 | `executeDivineWorkCycle()` | `handleRecipeWorking()` | 用 `assessBelieverState()` 替代 `RecipeHelper.checkConditions()` + `handleTickRecipe()` |
 | `assessBelieverState()` | `handlePowerStacks()` | 评估信徒状态 → 虔诚度 → 神圣努力 |
 | `verifyDivineDecree()` | `checkConditions()` | 遍历条件，默认 `pietyLevel < 0.5 → WAITING` |
@@ -654,32 +716,32 @@ heat.addTemperatureFromSourceWithHeatCapacity(data.temperature(), data.heatCapac
 | `setProgressRate()` | `setDivineEffort()` | — |
 | `getPowerRate()` | `getPietyLevel()` | 虔诚度 |
 | `setPowerRate()` | `setPietyLevel()` | — |
-| `getConsumePowerRate()` | `getConsumeRate()` | 消耗速率 |
-| `setConsumePowerRate()` | `setConsumeRate()` | — |
-| `getPushPowerRate()` | `getOfferRate()` | 奉献速率 |
-| `setPushPowerRate()` | `setOfferRate()` | — |
-| `updateConsumeRate()` | `evaluateDivineConsumption()` | 评估神圣消耗 |
-| `updatePushRate()` | `evaluateDivineOffering()` | 评估神圣奉献 |
+| `getConsumePowerRate()` | `getOfferRate()` | 祭品接收速率 |
+| `setConsumePowerRate()` | `setOfferRate()` | — |
+| `getPushPowerRate()` | `getPourRate()` | 祝福倾泻速率 |
+| `setPushPowerRate()` | `setPourRate()` | — |
+| `updateConsumeRate()` | `evaluateOffering()` | 评估祭品接收 |
+| `updatePushRate()` | `evaluateBlessing()` | 评估祝福倾泻 |
 | `updatePowerRate()` | `calculatePietyLevel()` | 计算虔诚度 |
 | `updateProgressRate()` | `determineDivineEffort()` | 确定神圣努力 |
 | `applyPowerStacks()` | `performDivineWork()` | 执行神圣工作 |
-| `updateConsumePower()` | `consumeDivinePower()` | 消耗神圣能量 |
-| `updatePushPower()` | `offerDivinePower()` | 奉献神圣能量 |
-| `getPowerReceive()` | `getGraceReceived()` | 已接收恩典 |
-| `getPowerPush()` | `getGraceOffered()` | 已奉献恩典 |
+| `updateConsumePower()` | `receiveOffering()` | 接收祭品能量 |
+| `updatePushPower()` | `pourBlessing()` | 倾泻祝福能量 |
+| `getPowerReceive()` | `getOfferingReceived()` | 已接收祭品 |
+| `getPowerPush()` | `getBlessingPoured()` | 已倾泻祝福 |
 
-### 12.3 GraceStack/OfferingStack 字段映射
+### 12.3 OfferingStack/BlessingStack 字段映射
 
 | 工程字段 | 神话字段 | 说明 |
 |---------|---------|------|
-| `getInputPowerStackSize()` | `getGraceCapacity()` | 圣恩容槽容量 |
-| `getOutputPowerStackSize()` | `getOfferingCapacity()` | 奉献容槽容量 |
-| `getInputPowerStack()` | `getGraceStock()` | 圣恩容槽存量 |
-| `getOutputPowerStack()` | `getOfferingStock()` | 奉献容槽存量 |
-| `setInputPowerStack()` | `setGraceStock()` | — |
-| `setOutputPowerStack()` | `setOfferingStock()` | — |
-| `getSafeInputThreshold()` | `getGraceThreshold()` | 圣恩容槽安全阈值 |
-| `getSafeOutputThreshold()` | `getOfferingThreshold()` | 奉献容槽安全阈值 |
+| `getInputPowerStackSize()` | `getOfferingCapacity()` | 祭品容槽容量 |
+| `getOutputPowerStackSize()` | `getBlessingCapacity()` | 祝福容槽容量 |
+| `getInputPowerStack()` | `getOfferingStock()` | 祭品容槽存量 |
+| `getOutputPowerStack()` | `getBlessingStock()` | 祝福容槽存量 |
+| `setInputPowerStack()` | `setOfferingStock()` | — |
+| `setOutputPowerStack()` | `setBlessingStock()` | — |
+| `getSafeInputThreshold()` | `getOfferingThreshold()` | 祭品容槽安全阈值 |
+| `getSafeOutputThreshold()` | `getBlessingThreshold()` | 祝福容槽安全阈值 |
 
 ### 12.4 神谕者字段映射
 
@@ -687,8 +749,8 @@ heat.addTemperatureFromSourceWithHeatCapacity(data.temperature(), data.heatCapac
 |---------|---------|------|
 | `progressRate` | `divineEffort` | 神圣努力 |
 | `powerRate` | `pietyLevel` | 虔诚度 |
-| `tickPowerInput` | `divineDemand` | 神谕要求 |
-| `tickPowerOutput` | `divineOffering` | 神谕奉献 |
+| `tickPowerInput` | `offeringDemand` | 祭品需求 |
+| `tickPowerOutput` | `blessingYield` | 祝福产出 |
 | `recipeContext` | `scriptureContext` | 经文上下文 |
 
 ### 12.5 神谕者方法映射

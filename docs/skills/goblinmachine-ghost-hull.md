@@ -10,16 +10,17 @@
 1. **伪装外观**：Part 机壳纹理即时变化，使用物品操作后替换为目标方块的完整外观（含 CTM）
 2. **CTM 连接**：相邻方块正确识别本机外观，实现连续纹理
 3. **蓝图建造**：参考 Create 强力胶 + 蓝图机制，先定义结构再放置/替换
-4. **多供能单方块**：WorkableTieredGoblinMachine 原生支持电能/动能/蒸汽等
-5. **控制器改造**：MultiblockControllerGoblinMachine 阻止老旧定时检查，改用事件驱动
+4. **多供能单方块**：`GoblinWorkableMachine` 原生支持电能/动能/蒸汽等
+5. **控制器改造**：`GoblinControllerMachine` 阻止老旧定时检查，改用事件驱动
 
 ### 1.2 设计原则
 
-- **最小侵入**：GoblinMultiblockPartMachine 继承 GTCEu 的 `MultiblockPartMachine`，只覆写一个方法
-- **原生渲染**：覆写 `MetaMachine.getBlockAppearance()` 返回 hullState，Minecraft 原生渲染管线处理一切（含 Create CTM）
+- **最小侵入**：`GoblinPartMachine` 继承 GTCEu 的 `MultiblockPartMachine`，只覆写一个方法
+- **原生渲染**：覆写 `MetaMachine.getBlockAppearance()` 返回 `hullState`，Minecraft 原生渲染管线处理一切（含 Create CTM）
 - **无需 DynamicRender**：不需要透明底座 + 动态渲染来绘制外壳
 - **无需 IGhostMachine 渲染层**：伪装外观通过 GTCEu 原生外观系统实现
 - **事件驱动**：结构验证不再定时轮询，改为参考 Create `EntityPlaceEvent` 事件驱动 + BFS 漫水填充
+- **★ 绑定放置**：`GoblinPartMachine` 方块不可直接放置，必须通过物品形式先绑定 Controller，再放到 Deity 缓存的可用位置
 
 ### 1.3 核心洞察：getBlockAppearance() 足矣
 
@@ -34,7 +35,7 @@ NeoForge Block.getAppearance()        ← Minecraft 原生 CTM 查询入口（Cr
       → 最后 fallback 到 getDefinition().getAppearance()（即 .appearanceBlock() 指定的默认壳）
 ```
 
-**关键发现**：在 `GoblinMultiblockPartMachine` 中直接覆写 `getBlockAppearance()` 返回存储的 `hullState`，就能让 Minecraft 原生渲染管线渲染目标方块的完整模型——包括 Create 的 CTM。因为 CTM 通过 NeoForge 的 `Block.getAppearance()` 查询相邻方块外观，而我们的覆写恰好在这个入口处返回了伪装方块。
+**关键发现**：在 `GoblinPartMachine` 中直接覆写 `getBlockAppearance()` 返回存储的 `hullState`，就能让 Minecraft 原生渲染管线渲染目标方块的完整模型——包括 Create 的 CTM。因为 CTM 通过 NeoForge 的 `Block.getAppearance()` 查询相邻方块外观，而我们的覆写恰好在这个入口处返回了伪装方块。
 
 **结论**：不需要 `DynamicRender`、不需要透明底座模型、不需要 `IGhostMachine` 的渲染层面。只需要一个方法覆写。
 
@@ -46,15 +47,14 @@ NeoForge Block.getAppearance()        ← Minecraft 原生 CTM 查询入口（Cr
 
 | 包名 | 层级 | 职责 |
 |------|------|------|
-| `com.goblincoders.goblintech.api.machine.multiblock.part` | API | GoblinMultiblockPartMachine、TieredPartGoblinMachine、TieredIOPartGoblinMachine |
-| `com.goblincoders.goblintech.api.machine.multiblock` | API | MultiblockControllerGoblinMachine（未来） |
-| `com.goblincoders.goblintech.api.machine.deity` | API | GoblinMachineDeity、IDeityOracle、StructureBitmap、SectionedBitmap、EnclosureValidator |
-| `com.goblincoders.goblintech.api.machine` | API | WorkableTieredGoblinMachine（未来） |
-| `com.goblincoders.goblintech.api.item` | API | ShamanItem（蓝图腾） |
-| `com.goblincoders.goblintech.client.shaman` | 客户端 | ShamanItemHandler（Outliner 可视化 + 仪式交互） |
-| `com.goblincoders.goblintech.network.shaman` | 网络 | ShamanNetwork（仪式确认网络包） |
+| `com.goblincoders.goblintech.api.machine.multiblock.part` | API | `GoblinPartMachine`、`GoblinTieredPartMachine`、`GoblinTieredIOPartMachine` |
+| `com.goblincoders.goblintech.api.machine.multiblock` | API | `GoblinControllerMachine`（未来） |
+| `com.goblincoders.goblintech.api.machine.deity` | API | `GoblinMachineDeity`、`IDeityOracle`、`StructureBitmap`、`SectionedBitmap`、`EnclosureValidator` |
+| `com.goblincoders.goblintech.api.machine` | API | `GoblinWorkableMachine`（未来） |
+| `com.goblincoders.goblintech.api.item` | API | `GoblinShamanItem`（蓝图腾） |
+| `com.goblincoders.goblintech.client.shaman` | 客户端 | `GoblinShamanItemHandler`（Outliner 可视化 + 仪式交互） |
 
-> **已移除**：`com.goblincoders.goblintech.api.machine.feature.multiblock` — GhostPartHullRender/RenderType/Model 不再需要，IGhostMachine 接口也不再需要。伪装外观通过直接覆写 `MetaMachine.getBlockAppearance()` 实现。
+> **已移除**：`com.goblincoders.goblintech.api.machine.feature.multiblock` — `GhostPartHullRender`/`RenderType`/`Model` 不再需要，`IGhostMachine` 接口也不再需要。伪装外观通过直接覆写 `MetaMachine.getBlockAppearance()` 实现。
 
 ### 2.2 与现有包的关系
 
@@ -63,8 +63,8 @@ goblintech（主包）
 ├── api.machine.feature.multiblock   ← 本次新增：幽灵外壳 API
 ├── api.machine.multiblock.part      ← 本次新增：Part 机器层次
 ├── api.machine.multiblock           ← 未来：Controller 改造
-├── api.machine                      ← 未来：WorkableTieredGoblinMachine
-├── recipe                           ← 已有：GoblinRecipe 配方系统
+├── api.machine                      ← 未来：GoblinWorkableMachine
+├── recipe                           ← 已有：配方系统（`GoblinOracleOfScripture`、`GoblinScripture`）
 ├── client.blueprint                 ← 未来：蓝图可视化
 └── create.kinetic.recipe            ← 已有：Create 动能配方
 ```
@@ -79,24 +79,23 @@ goblintech（主包）
 MetaMachine (GTCEu)
 │
 ├── MultiblockPartMachine (GTCEu, 168行)
-│   └── GoblinMultiblockPartMachine     ← 本次新建
+│   └── GoblinPartMachine     ← 本次新建
 │       ├── getBlockAppearance() → 返回 hullState（★ 核心：一个方法实现伪装+CTM）
 │       ├── hullState / originalBlockStack 字段
-│       └── TieredPartGoblinMachine     ← 改继承
-│           └── TieredIOPartGoblinMachine ← 自动继承
+│       └── GoblinTieredPartMachine     ← 改继承
+│           └── GoblinTieredIOPartMachine ← 自动继承
 │
-├── WorkableTieredGoblinMachine implements IGoblinRecipeLogicMachine  ← 未来
+├── GoblinWorkableMachine implements IBelieverOfScripture  ← 未来
 │   （多供能单方块，无伪装特性）
 │
 └── MultiblockControllerMachine (GTCEu, 421行)
-    └── MultiblockControllerGoblinMachine implements IGoblinRecipeLogicMachine  ← 未来
+    └── GoblinControllerMachine implements IBelieverOfScripture  ← 未来
         ├── onLoad() → 不注册 asyncLogic
         ├── asyncCheckPattern() → 空实现
         └── （保留 Controller 类型身份通过 instanceof 检查）
 ```
 
-> **已移除**：`implements IGhostMachine` — 不再需要接口，伪装外观通过直接覆写 `MetaMachine.getBlockAppearance()` 实现。
-> **已移除**：`replacePartModelWhenFormed() → false` — 不再需要透明底座，因为渲染完全由原生管线处理。
+> 伪装外观通过直接覆写 `MetaMachine.getBlockAppearance()` 实现，不再需要 `IGhostMachine` 接口或透明底座。
 
 ### 3.2 为什么不创建 GoblinMetaMachine
 
@@ -109,49 +108,25 @@ MetaMachine (GTCEu)
 ### 4.1 核心方法
 
 ```java
-// GoblinMultiblockPartMachine（继承 MultiblockPartMachine）
-public class GoblinMultiblockPartMachine extends MultiblockPartMachine {
-    @SaveField @SyncToClient @RerenderOnChanged
-    private BlockState hullState;        // 伪装方块外观
+// GoblinPartMachine.getBlockAppearance() — ★ 伪装全貌，一个方法足矣
+@Override
+public BlockState getBlockAppearance(BlockState state, BlockAndTintGetter level,
+                                     BlockPos pos, Direction side,
+                                     @Nullable BlockState sourceState,
+                                     @Nullable BlockPos sourcePos) {
+    var coverAppearance = getCoverContainer()
+        .getBlockAppearance(state, level, pos, side, sourceState, sourcePos);
+    if (coverAppearance != null) return coverAppearance;
 
-    @SaveField(nbtKey = "originalBlock")
-    private ItemStack originalBlockStack;
+    BlockState hull = getHullState();
+    if (hull != null && !hull.isAir()) return hull;
+    // ★ 直接返回绝对 BlockState，不做旋转
 
-    /**
-     * ★ 核心：覆写此方法即可实现伪装 + CTM。
-     * 无需 IGhostMachine 接口、无需 DynamicRender、无需透明底座。
-     */
-    @Override
-    public BlockState getBlockAppearance(BlockState state, BlockAndTintGetter level,
-                                         BlockPos pos, Direction side,
-                                         @Nullable BlockState sourceState,
-                                         @Nullable BlockPos sourcePos) {
-        // 1. Cover 优先（GTCEu 原生逻辑）
-        var coverAppearance = getCoverContainer()
-            .getBlockAppearance(state, level, pos, side, sourceState, sourcePos);
-        if (coverAppearance != null) return coverAppearance;
-
-        // 2. 返回伪装外观（含 CTM 支持）
-        BlockState hull = getHullState();
-        if (hull != null && !hull.isAir()) return hull;
-
-        // 3. 兜底：维持 GTCEu 原生行为
-        return super.getBlockAppearance(state, level, pos, side, sourceState, sourcePos);
-    }
-
-    // 扳手循环伪装方块属性
-    public boolean cycleHullProperty() {
-        BlockState hull = getHullState();
-        // 循环 FACING / AXIS / LIT 等属性
-        // ...
-    }
-
-    public void dropOriginalBlock() {
-        // 破坏时掉落被替换的原方块
-        // ...
-    }
+    return super.getBlockAppearance(state, level, pos, side, sourceState, sourcePos);
 }
 ```
+
+> 完整类定义见 [§5 GoblinPartMachine](#5-goblinpartmachine)。
 
 ### 4.2 为什么它能工作
 
@@ -163,18 +138,83 @@ public class GoblinMultiblockPartMachine extends MultiblockPartMachine {
 | 4 | Minecraft 模型系统 | 加载该 BlockState 的完整 BakedModel（含 Create CTM） |
 | 5 | Create CTM | 通过步骤 1 查询相邻方块，发现我们的方块返回了匹配的外壳 → 纹理连接 |
 
-### 4.3 与旧方案的对比
+### 4.3 朝向处理
+
+#### 核心原则：hullState 存绝对 BlockState
+
+`hullState` 存储的是**伪装目标方块在世界中的绝对朝向**，不是相对 Part 的朝向。渲染时直接返回，不做旋转。
+
+```
+伪装时：原方块是熔炉朝东 → hullState = furnace[facing=east]
+渲染时：直接返回 hullState → 熔炉始终朝东
+扳手旋转 Part 从北到西：hullState 不变 → 熔炉仍然朝东 ✓
+蓝图整体旋转 90°：hullState 随结构数据旋转 → 熔炉朝南 ✓（蓝图系统原生行为）
+```
+
+#### 两种旋转场景
+
+| 场景 | 触发方式 | hullState 行为 | 原理 |
+|------|---------|---------------|------|
+| 扳手旋转 Part | 玩家单独旋转机器 | **不变**（伪装保持绝对朝向） | Part 转了但伪装没转，相对关系自动变化 |
+| 蓝图/AE2 整体旋转 | 结构被整体旋转放置 | **随结构旋转** | 蓝图系统和 AE2 空间塔原生处理 BlockState 旋转 |
+
+#### 为什么不需要四元数/相对旋转
+
+- 伪装时记录的就是**世界坐标下的绝对 BlockState**
+- 扳手旋转 Part 后，相对关系变了，但绝对 BlockState 没变，渲染正确
+- 蓝图/AE2 旋转整个结构时，BlockState 的 FACING 会被结构系统自动旋转，无需我们干预
+
+#### 简化后的 getBlockAppearance()
+
+```java
+@Override
+public BlockState getBlockAppearance(BlockState state, BlockAndTintGetter level,
+                                     BlockPos pos, Direction side,
+                                     @Nullable BlockState sourceState,
+                                     @Nullable BlockPos sourcePos) {
+    var coverAppearance = getCoverContainer()
+        .getBlockAppearance(state, level, pos, side, sourceState, sourcePos);
+    if (coverAppearance != null) return coverAppearance;
+
+    BlockState hull = getHullState();
+    if (hull != null && !hull.isAir()) return hull;
+    // ★ 直接返回，不做任何旋转。hullState 是绝对 BlockState。
+
+    return super.getBlockAppearance(state, level, pos, side, sourceState, sourcePos);
+}
+```
+
+#### 场景示例
+
+```
+初始状态：Part 朝北，伪装熔炉朝东
+┌─────────────────────────────────────────┐
+│  世界：                                  │
+│    熔炉朝东 [hullState=furnace(east)]     │
+│    Part 朝北                              │
+│                                          │
+│  扳手旋转 Part → 朝西：                    │
+│    熔炉朝东 [hullState 不变]               │
+│    Part 朝西                              │
+│                                          │
+│  蓝图整体旋转 90° 顺时针 → 放置：           │
+│    熔炉朝南 [蓝图系统自动旋转 hullState]     │
+│    Part 朝东 [蓝图系统自动旋转 Part]        │
+└─────────────────────────────────────────┘
+```
+
+### 4.4 与旧方案的对比
 
 | | 旧方案（IGhostMachine + DynamicRender） | 新方案（getBlockAppearance 覆写） |
 |------|--------------------------------------|-----------------------------------|
 | 新增类 | IGhostMachine、GhostPartHullRender、RenderType、Model、transparent.png | **0 个新类** |
 | 渲染方式 | DynamicRender 接管，底座透明 | Minecraft 原生渲染 |
 | CTM 支持 | 需要额外注册 + renderType 配合 | 原生支持（通过 getAppearance 查询） |
-| 方块属性 | 需手动处理 FACING 等 | 天然支持（因为渲染的是完整 BlockState） |
+| 方块属性 | 需手动处理 FACING 等 | 直接存绝对 BlockState，扳手旋转不变，蓝图旋转由结构系统处理（见 §4.3） |
 | 破坏动画 | 需要同步 | 自动显示 hullState 的破坏动画 |
 | 维护成本 | 高（多个类相互关联） | **极低**（一个方法覆写） |
 
-### 4.4 从现有实现中的清理
+### 4.5 从现有实现中的清理
 
 由于新方案完全不需要以下文件，可以从项目中移除：
 
@@ -189,23 +229,39 @@ public class GoblinMultiblockPartMachine extends MultiblockPartMachine {
 
 ---
 
-## 5. GoblinMultiblockPartMachine
+## 5. GoblinPartMachine
 
 ### 5.1 基本结构
 
 ```java
-public class GoblinMultiblockPartMachine
-    extends MultiblockPartMachine {      // 继承 GTCEu 168行全部功能
+/**
+ * 【神棍描述】幽灵 Part 机器 - 被多方块之神选中的伪装者，凡人不可直视其真身
+ * 
+ * <p>【工程描述】继承自 GTCEu {@link MultiblockPartMachine}，通过覆写
+ * {@link #getBlockAppearance()} 实现伪装外观，原生支持 Create CTM 连接纹理。
+ * 
+ * <p><b>★ 放置限制</b>：此方块<b>不可被玩家直接从物品栏放置</b>。
+ * 必须通过 {@code GoblinTieredPartMachine}（Item）先绑定 Controller，
+ * 再从 Deity 缓存的可用位置中选择目标位置放置。
+ * 直接放置（如 /setblock、蓝图大炮除外）将被拒绝。
+ */
+public class GoblinPartMachine extends MultiblockPartMachine {
 
     @SaveField @SyncToClient @RerenderOnChanged
     private BlockState hullState;        // 伪装方块外观
 
     @SaveField(nbtKey = "originalBlock")
-    private ItemStack originalBlockStack;
+    private ItemStack originalBlockStack; // 原方块的掉落物（直接破坏时掉落）
+
+    @SaveField(nbtKey = "originalBlockTag")
+    @Nullable
+    private CompoundTag originalBlockTag; // 原方块的 TileEntity NBT（扳手拆卸时还原）
 
     /**
-     * ★ 唯一需要覆写的方法。
-     * 伪装外观 + CTM 全部由 Minecraft 原生渲染管线处理。
+     * 【神棍描述】显露真身 - 返回伪装外观
+     * 
+     * <p>【工程描述】直接返回 hullState，不做旋转。
+     * 优先级：Cover > 伪装外观 > GTCEu 原生行为。
      */
     @Override
     public BlockState getBlockAppearance(BlockState state, BlockAndTintGetter level,
@@ -222,7 +278,37 @@ public class GoblinMultiblockPartMachine
         return super.getBlockAppearance(state, level, pos, side, sourceState, sourcePos);
     }
 
-    @Override public void onMachineDestroyed() { super.onMachineDestroyed(); dropOriginalBlock(); }
+    // 扳手循环伪装方块属性（FACING / AXIS / LIT 等）
+    public boolean cycleHullProperty() {
+        // ...
+    }
+
+    /**
+     * 【神棍描述】还魂 — 拆卸时将伪装方块还原为真实方块
+     * 
+     * <p>【工程描述】根据拆卸方式不同，还原行为有差异：
+     * <ul>
+     * <li>扳手拆卸（asBlock=true）：在原位置放置真实方块（保留 TileEntity/NBT）</li>
+     * <li>直接破坏（asBlock=false）：掉落 originalBlockStack 物品，不放置方块</li>
+     * </ul>
+     */
+    public void restoreOriginalBlock(boolean asBlock) {
+        if (asBlock) {
+            getLevel().setBlock(getPos(), getHullState(), 3);
+            if (originalBlockTag != null) {
+                var be = getLevel().getBlockEntity(getPos());
+                if (be != null) be.loadWithComponents(originalBlockTag, getLevel().registryAccess());
+            }
+        } else {
+            Block.popResource(getLevel(), getPos(), originalBlockStack.copy());
+        }
+    }
+
+    @Override 
+    public void onMachineDestroyed() { 
+        super.onMachineDestroyed(); 
+        restoreOriginalBlock(false); // 直接破坏 → 掉落物品
+    }
 }
 ```
 
@@ -253,7 +339,7 @@ public class GoblinMultiblockPartMachine
 新方案（简化）：
   Minecraft 原生渲染管线
     ├── Block.getAppearance() → MetaMachineBlock.getAppearance()
-    │   └── GoblinMultiblockPartMachine.getBlockAppearance()
+    │   └── GoblinPartMachine.getBlockAppearance()
     │       └── return hullState      ← 直接返回，天然支持 CTM
     └── 剩余由 Minecraft + Create CTM 自动处理
 ```
@@ -262,17 +348,15 @@ public class GoblinMultiblockPartMachine
 
 ---
 
----
-
 ## ~~6. 渲染系统~~（已移除）
 
 > 此章节描述的 `GhostPartHullRender` / `GhostPartHullRenderType` / `GhostPartHullModel` / `transparent.png` 已不再需要。
-> 伪装外观现在通过直接覆写 `GoblinMultiblockPartMachine.getBlockAppearance()` 实现，Minecraft 原生渲染管线（含 Create CTM）自动处理一切。
+> 伪装外观现在通过直接覆写 `GoblinPartMachine.getBlockAppearance()` 实现，Minecraft 原生渲染管线（含 Create CTM）自动处理一切。
 > 详见 [§4 伪装外观实现](#4-伪装外观实现getblockappearance-覆写)。
 
 ---
 
-## 7. MultiblockControllerGoblinMachine（计划）
+## 7. GoblinControllerMachine（计划）
 
 ### 7.1 设计动机
 
@@ -290,8 +374,8 @@ public class GoblinMultiblockPartMachine
 
 ### 7.3 替代方案
 
-- **结构建造**：Create 蓝图 + 大炮，由继承 Create `SchematicItem` 的 `ShamanItem` 驱动
-- **结构验证**：MultiblockControllerGoblinMachine 内部维护三维 bitmap，在方块放置/破坏时 O(1) 更新 + O(n/64) 比对（n=方块数），瞬时完成结构验证
+- **结构建造**：Create 蓝图 + 大炮，由继承 Create `SchematicItem` 的 `GoblinShamanItem` 驱动
+- **结构验证**：`GoblinControllerMachine` 内部维护三维 bitmap，在方块放置/破坏时 O(1) 更新 + O(n/64) 比对（n=方块数），瞬时完成结构验证
 - **GUI 预览**：复用 Create 蓝图预览系统（含移动/旋转/翻转），第二排添加 JEI 风格的多方块预览按钮
 
 ### 7.4 保留的继承功能
@@ -311,9 +395,9 @@ public class GoblinMultiblockPartMachine
 
 ```
 物品层：
-  MultiblockControllerGoblinMachine（方块物品，可放置）—— 机器的"肉身"
-  ShamanItem（Item，extends Create SchematicItem）—— "蓝图腾"，通神的萨满
-  TieredPartGoblinMachine（Item，非方块——不可单独放置在世界中）
+  GoblinControllerMachine（方块物品，可放置）—— 机器的"肉身"
+  GoblinShamanItem（Item，extends Create SchematicItem）—— "蓝图腾"，通神的萨满
+  GoblinTieredPartMachine（Item，非方块——不可单独放置在世界中）
 
 世界外层：
   GoblinMachineDeity —— "多方块机器之神"，以 Controller 为键管理成型判定缓存
@@ -321,7 +405,7 @@ public class GoblinMultiblockPartMachine
      └─ 方块变更 → onBlockChanged() → 返回哪些 Controller 的成型状态变了
 
 仪式一「拜拜」— 从已放置的 Controller 获取蓝图：
-  ShamanItem 对 MultiblockControllerGoblinMachine 下蹲右键（鞠躬拜一下）
+  GoblinShamanItem 对 GoblinControllerMachine 下蹲右键（鞠躬拜一下）
     → 蓝图内容 = 该 Controller 定义的结构（锚定于此位置，不可移动）
     → Controller 位置非法方块 → 红色闪烁（机器在告诉哥布林哪里不对）
     → 输入输出限制 → Outliner 标注（机器在告诉哥布林 IO 方向）
@@ -330,52 +414,52 @@ public class GoblinMultiblockPartMachine
     → 立即触发一次结构验证（重新获得神的认可）
 
 仪式二「祈福」— 自由放置蓝图：
-  ShamanItem 副手放 MultiblockControllerGoblinMachine 物品，主手对空气右键
+  GoblinShamanItem 副手放 GoblinControllerMachine 物品，主手对空气右键
     → 蓝图内容 = Controller 定义的结构 + 可移动/旋转/翻转
     → 支持 Create 蓝图全部工具（MOVE / ROTATE / FLIP / DEPLOY）
     → 放入蓝图加农炮 → 火药 + 动画批量建造
     → Controller 方块随蓝图一起放置到加农炮范围内
 
 仪式三「显灵」— 蓝图加农炮打印完成后：
-  ShamanItem 就是 Create 蓝图（extends SchematicItem）→ 加农炮正常使用
+  GoblinShamanItem 就是 Create 蓝图（extends SchematicItem）→ 加农炮正常使用
     → 加农炮打印全部 Part 方块 + Controller 方块
     → 打印完成后 → GoblinMachineDeity.registerController(controller)
     → deity.checkFormation() → 如果通过 → controller.onStructureFormed()
     → 如果未通过 → 等待后续手动补 Part
 
 仪式四「僭越」— 手动 Part 放置：
-  TieredPartGoblinMachine 物品
-    └─ 右键 MultiblockControllerGoblinMachine → 绑定（哥布林将灵魂出卖给神）
+  GoblinTieredPartMachine 物品
+    └─ 右键 GoblinControllerMachine → 绑定（哥布林将灵魂出卖给神）
          └─ 右键交集中的方块位置 → 放置 + 伪装（僭越神权）
               └─ 每次放置都会惊扰 GoblinMachineDeity（调用成型检查）
                    ├─ 神明宽恕 → 机器成型（僭越行为被认可）
                    └─ 神明震怒 → 机器失效（神罚）
 ```
 
-### 8.2 TieredPartGoblinMachine 行为状态机
+### 8.2 GoblinTieredPartMachine 行为状态机
 
-TieredPartGoblinMachine 是物品（Item），不是可直接放置的方块物品。
+`GoblinTieredPartMachine` 是物品（Item），不是可直接放置的方块物品。
 
 ```
-TieredPartGoblinMachine（未绑定）
+GoblinTieredPartMachine（未绑定）
   │
-  ├─ 右键 MultiblockControllerGoblinMachine
+  ├─ 右键 GoblinControllerMachine
   │   ├─ Part 支持被当前 Controller 蓝图使用（类型匹配）
   │   │   └─ 绑定 → 状态变为「已绑定」
   │   └─ Part 不支持 → 不做任何事
   │
   └─（右键非 Controller）→ 不做任何事
 
-TieredPartGoblinMachine（已绑定，持有中）
+GoblinTieredPartMachine（已绑定，持有中）
   │
   ├─ Outliner 标记绑定的 Controller 位置（绿色高亮）
   ├─ Outliner 标记该 Part 在当前 Controller 蓝图中可放置的位置（黄色高亮）
   │
-  ├─ 右键另一个 MultiblockControllerGoblinMachine（不支持共享）
+  ├─ 右键另一个 GoblinControllerMachine（不支持共享）
   │   ├─ 原 Controller 标记变红色 + 闪烁
   │   └─ 所有标记淡出 → 放弃绑定
   │
-  ├─ 右键另一个 MultiblockControllerGoblinMachine（支持共享）
+  ├─ 右键另一个 GoblinControllerMachine（支持共享）
   │   ├─ 取两 Controller 蓝图可放置位置的交集
   │   ├─ 交集为空/已被占 → 放弃绑定新 Controller
   │   └─ 交集非空 → 绑定新旧两 Controller
@@ -383,22 +467,28 @@ TieredPartGoblinMachine（已绑定，持有中）
   │       └─ Outliner 标记交集位置
   │
   └─ 右键交集位置的方法
-      ├─ 目标位置已被 Part 占据 → 放弃放置
-      └─ 目标位置可替换 → 放置 GoblinMultiblockPartMachine 方块
+      ├─ 目标位置已被 Part 占据 → 拒绝，提示玩家
+      ├─ 目标位置不在 Deity 命中缓存中 → ★ 拒绝放置！只有绑定的位置才能放
+      └─ 目标位置命中缓存且可替换 → 放置 GoblinPartMachine 方块
           ├─ hullState = 目标位置的原方块 BlockState
+          ├─ originalBlockTag = 原方块的 TileEntity NBT（如有）
           ├─ originalBlockStack = 目标位置的原方块掉落物
           ├─ 替换世界中的方块
+          ├─ Deity.onPartPlaced(pos, partTypeId) → 命中缓存直接通知 Controller
           └─ addedToController() → 注册到绑定的 Controller
+
+  └─ 右键非缓存的位置 → ★ 禁止！（必须绑定 Controller 后才能放到特定位置）
+  └─（尝试直接放置 GoblinPartMachine 方块物品）→ ★ 禁止！（BlockItem 不可用）
 ```
 
-### 8.3 ShamanItem（蓝图腾）行为
+### 8.3 GoblinShamanItem（蓝图腾）行为
 
-ShamanItem 继承 Create 的 `SchematicItem`（S-h-a-m-a-n / S-c-h-e-m-a-t-i-c，谐音梗），复用其完整蓝图系统。它是哥布林与"多方块机器之神"沟通的萨满——哥布林看不懂蓝图，只当它是通神的法器。
+`GoblinShamanItem` 继承 Create 的 `SchematicItem`（S-h-a-m-a-n / S-c-h-e-m-a-t-i-c，谐音梗），复用其完整蓝图系统。它是哥布林与"多方块机器之神"沟通的萨满——哥布林看不懂蓝图，只当它是通神的法器。
 
 **仪式一「拜拜」— 下蹲右键已放置的 Controller**
 
 ```
-ShamanItem 对 MultiblockControllerGoblinMachine 下蹲右键（鞠躬拜一下）
+GoblinShamanItem 对 GoblinControllerMachine 下蹲右键（鞠躬拜一下）
   ├─ 蓝图内容 = 该 Controller 定义的结构
   ├─ Controller 位置已锚定（不可移动/旋转/翻转）
   ├─ 非法方块检测：
@@ -413,7 +503,7 @@ ShamanItem 对 MultiblockControllerGoblinMachine 下蹲右键（鞠躬拜一下�
 **仪式二「祈福」— 副手放 Controller 物品，主手对空气右键**
 
 ```
-ShamanItem 副手放 MultiblockControllerGoblinMachine 物品，主手对空气右键
+GoblinShamanItem 副手放 GoblinControllerMachine 物品，主手对空气右键
   ├─ 蓝图内容 = Controller 定义的结构（相对坐标 + Part 类型）
   ├─ Controller 方块将随蓝图一起放置
   ├─ 此时算作有内容的 Create 蓝图，支持全部 Create 蓝图工具：
@@ -435,26 +525,32 @@ ShamanItem 副手放 MultiblockControllerGoblinMachine 物品，主手对空气�
 **仪式三「显灵」— 作为蓝图在加农炮中使用**
 
 ```
-ShamanItem 放入 Create 蓝图加农炮（标准 Create 流程）
+GoblinShamanItem 放入 Create 蓝图加农炮（标准 Create 流程）
   ├─ 就是 Create 蓝图（extends SchematicItem），加农炮原生支持
   ├─ 消耗火药 + 动画搭建
-  ├─ 每个 Part 位置 → 放置 GoblinMultiblockPartMachine
+  ├─ 每个 Part 位置 → 放置 GoblinPartMachine
   ├─ Controller 方块放置到蓝图定义的坐标
   ├─ 打印完成后：
   │   ├─ GoblinMachineDeity.registerController(controller)
   │   └─ 额外主动触发 deity.checkFormation()
   │       ├─ 通过 → controller.onStructureFormed()
   │       └─ 未通过 → 等待后续手动补 Part
-  └─ 注意：不再需要将 Controller 放入 ShamanItem 的槽位
-      （祈福时副手持有即可，显灵时 ShamanItem 就是完整蓝图）
+  └─ 注意：不再需要将 Controller 放入 GoblinShamanItem 的槽位
+      （祈福时副手持有即可，显灵时 GoblinShamanItem 就是完整蓝图）
 ```
 
 ### 8.4 扳手交互（拆卸）
 
 ```
-Create 扳手右键 TieredPartGoblinMachine 方块：
-  ├─ 掉落 TieredPartGoblinMachine 物品
-  ├─ 原位置替换回 originalBlockStack（伪装方块）
+Create 扳手右键 GoblinTieredPartMachine 方块：
+  ├─ 调用 restoreOriginalBlock(true) — 原位置放置真实方块（保留 TileEntity/NBT）
+  ├─ 掉落 GoblinTieredPartMachine 物品
+  ├─ removedFromController() — 注销
+  └─ 同步客户端
+
+直接破坏方块：
+  ├─ 调用 restoreOriginalBlock(false) — 掉落 originalBlockStack 物品
+  ├─ 掉落 GoblinTieredPartMachine 物品
   ├─ removedFromController() — 注销
   └─ 同步客户端
 ```
@@ -463,8 +559,8 @@ Create 扳手右键 TieredPartGoblinMachine 方块：
 
 | 场景 | Outliner 类型 | 颜色 | 说明 |
 |------|-------------|------|------|
-| 持有 TieredPartGoblinMachine | `showAABB` | `0x4D9162` 绿 | 绑定的 Controller 位置 |
-| 持有 TieredPartGoblinMachine | `showCluster` | `0xC5B548` 黄 | 可放置位置集合 |
+| 持有 GoblinTieredPartMachine | `showAABB` | `0x4D9162` 绿 | 绑定的 Controller 位置 |
+| 持有 GoblinTieredPartMachine | `showCluster` | `0xC5B548` 黄 | 可放置位置集合 |
 | 不能共享时右键新 Controller | `showAABB` | `0xC54848` 红→淡出 | 原 Controller 变红闪烁 |
 | 支持共享，取交集后 | `showCluster` | `0xC5B548` 黄 | 两 Controller 的交集位置 |
 | 方块已放置 | `remove` | — | 清除 Outliner 标记 |
@@ -473,7 +569,7 @@ Create 扳手右键 TieredPartGoblinMachine 方块：
 
 | Create 类 | 复用以求 | 在你的场景 |
 |-----------|---------|-----------|
-| `SchematicItem` | `extends` | `ShamanItem` — "蓝图腾"，S-h-a-m-a-n / S-c-h-e-m-a-t-i-c 谐音梗 |
+| `SchematicItem` | `extends` | `GoblinShamanItem` — "蓝图腾"，S-h-a-m-a-n / S-c-h-e-m-a-t-i-c 谐音梗 |
 | `SchematicHandler` | 直接使用 | 客户端蓝图预览 + 工具选择 |
 | `SchematicTransformation` | 直接使用 | 移动/旋转/翻转定位 |
 | `SchematicRenderer` | 直接使用 | 3D 结构半透明渲染 |
@@ -628,7 +724,7 @@ public sealed interface FormationStatus {
 ```
 === 放置路径 ===
 EntityPlaceEvent / 蓝图大炮打印完成：
-  1. 新方块是 GoblinMultiblockPartMachine？
+  1. 新方块是 GoblinPartMachine？
      ├─ 否 → 忽略
      └─ 是 → 继续
   2. 遍历 Part 声明的每个 Controller 的 bitmap：
@@ -642,7 +738,7 @@ EntityPlaceEvent / 蓝图大炮打印完成：
 
 === 移除路径 ===
 BlockEvent.BreakEvent / 扳手拆卸：
-  1. 旧方块是 GoblinMultiblockPartMachine？
+  1. 旧方块是 GoblinPartMachine？
      └─ 是 → 对每个关联的 Controller：bitmap.markVacant(worldPos)
   2. 如果之前是 formed → onStructureInvalid()
 ```
@@ -706,7 +802,7 @@ public StructureBitmap(int sizeX, int sizeY, int sizeZ, BlockPos origin,
 **方式 2 — 从 GoblinMultiblockDefinition 自动生成**
 
 ```java
-// MultiblockControllerGoblinMachine
+// GoblinControllerMachine
 public StructureBitmapSet createBitmapSet() {
     var def = getDefinitionData();  // 抽象方法，每个 Controller 实现
     return StructureBitmapSet.fromDefinition(def, getValidFacings(), self().getPos());
@@ -739,7 +835,7 @@ public StructureBitmapSet createBitmapSet() {
 | 错误报告 | ✅ PatternError | ✅ PlacementResult + FormationStatus | ⬜ 已补齐 |
 | 多朝向 | ✅ 运行时遍历 | ✅ 预生成 per-facing Bitmap | ⬜ 已补齐 |
 | 自动搭建 | ✅ autoBuild | 蓝图大炮替代 | ⬜ 替代方案更好 |
-| JEI/Jade 预览 | ✅ getPreview | 保留 BlockPattern DSL 仅用于预览 | ⬜ 两全其美 |
+| JEI/Jade 预览 | ✅ getPreview | Deity Oracle 直出预览（§8.7.15） | ⬜ 更快更一致 |
 | 内存 | MultiblockState + cache (~KB) | BitSet + byte[] (~几十字节) | ✅ Bitmap 更省 |
 
 #### 8.7.9 动态结构处理：三种模式
@@ -925,7 +1021,7 @@ public class EnclosureValidator {
 | 沿轴可延展（min~max 重复层） | `SectionedBitmap` | `activeBitmap.checkFormation().isFormed()` |
 | 自由围合（超净间等） | `EnclosureValidator` | `isEnclosed()` |
 
-MultiblockControllerGoblinMachine 通过抽象方法声明自己属于哪种模式：
+GoblinControllerMachine 通过抽象方法声明自己属于哪种模式：
 
 ```java
 public abstract GoblinMultiblockDefinition getDefinitionData();
@@ -951,310 +1047,437 @@ public class GoblinMachineDeity {
     
     // === 核心数据结构 ===
     // Controller → 其神谕实例
-    private final Map<MultiblockControllerGoblinMachine, IDeityOracle> oracles;
-    // 世界坐标 → 覆盖该坐标的所有 Controller（用于快速查找受影响的 Controller）
-    private final Long2ObjectOpenHashMap<Set<MultiblockControllerGoblinMachine>> posToControllers;
+    private final Map<GoblinControllerMachine, IDeityOracle> oracles;
     // 缓存的神谕判定（避免重复计算）
-    private final Map<MultiblockControllerGoblinMachine, FormationStatus> cachedStatus;
-    // 粗略范围索引：AABB → 覆盖此范围的 Controller（用于快速预筛选）
+    private final Map<GoblinControllerMachine, FormationStatus> cachedStatus;
+    // 粗略范围索引：AABB → 覆盖此范围的 Controller（仅 Enclosure 模式用于边界方块变更感知）
     private final List<AABBControllerPair> roughAABBIndex;
+    // ★ 命中缓存：玩家绑定 Part → 可用位置集合（放置时快速命中 Controller）
+    //   放置前互动时写入，放置后清理，取消/切换物品时清理
+    private final Map<Player, HitCache> playerHitCaches;
     
     // === 公开 API ===
-    
+
     /**
-     * 方块变更时调用（哥布林僭越神权，惊扰神明）。
-     * 先进行粗略范围检查，如果变更不在任何机器的检查范围内就直接跳过（神明懒得理会）。
-     * @return 受影响的 Controller → 新的成型状态（仅返回状态有变化的）
+     * 【神棍描述】神谕查询 — 玩家绑定 Part 时查询可用放置位置
+     * @return 可用位置列表，同时缓存为命中区域
      */
-    public Map<MultiblockControllerGoblinMachine, FormationStatus> onBlockChanged(
-            Level level, BlockPos pos, BlockState oldState, BlockState newState) {
-        
-        // 快速路径：方块变更不在任何机器的粗略范围内 → 直接跳过
-        Set<MultiblockControllerGoblinMachine> candidates = roughAABBCheck(level, pos);
-        if (candidates == null || candidates.isEmpty()) return Collections.emptyMap();
-        
-        // 精细路径：命中范围 → 精确检查每个候选 Controller
-        Map<MultiblockControllerGoblinMachine, FormationStatus> changes = new HashMap<>();
-        
-        for (var controller : candidates) {
-            // 再用精确的 posToControllers 索引验证一次（双重保险）
-            Set<MultiblockControllerGoblinMachine> affected = posToControllers.get(pos.asLong());
-            if (affected == null || !affected.contains(controller)) continue;
-            
-            IDeityOracle oracle = oracles.get(controller);
-            if (oracle == null) continue;
-            
-            // 输入方块变更 → 神谕内部更新
-            oracle.onBlockChanged(pos, oldState, newState);
-            
-            // 检查成型状态是否变化
-            FormationStatus oldStatus = cachedStatus.getOrDefault(controller, 
-                FormationStatus.INCOMPLETE);
-            FormationStatus newStatus = oracle.checkFormation();
-            
-            if (!oldStatus.equals(newStatus)) {
-                cachedStatus.put(controller, newStatus);
-                changes.put(controller, newStatus);
-            }
-        }
-        
-        return changes; // 调用方据此触发 onStructureFormed/onStructureInvalid
-    }
-    
-    /**
-     * 粗略 AABB 范围检查（第一道筛选）
-     * 只有变更位置在某个机器的粗略包围盒内才继续检查
-     * 同时实现神明厌烦机制：频繁触发会导致神明厌弃（暂时取消检测）
-     */
-    private Set<MultiblockControllerGoblinMachine> roughAABBCheck(Level level, BlockPos pos) {
-        Set<MultiblockControllerGoblinMachine> candidates = null;
-        long currentTime = System.currentTimeMillis();
-        
-        // 从配置获取阈值
-        int triggerThreshold = ConfigHolder.INSTANCE.machines.multiblockAnnoyanceThreshold;
-        long minIntervalMs = ConfigHolder.INSTANCE.machines.multiblockAnnoyanceInterval * 50L; // tick → ms
-        
-        for (var pair : roughAABBIndex) {
-            if (pair.aabb.contains(new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5))) {
-                // 检查是否被神明厌弃
-                if (pair.annoyanceTracker().isAbandoned()) {
-                    // 神明已厌弃：不仅跳过检测，还要强制标记结构为不完整
-                    // 并触发失效回调（如果之前是成型状态）
-                    FormationStatus currentStatus = cachedStatus.get(pair.controller());
-                    if (currentStatus == FormationStatus.FORMED) {
-                        cachedStatus.put(pair.controller(), FormationStatus.INCOMPLETE);
-                        // 触发失效回调（神罚）
-                        changes.put(pair.controller(), FormationStatus.INCOMPLETE);
-                    }
-                    continue; // 跳过检测，拒绝承认结构完整
-                }
-                
-                // 记录触发并检查是否触发厌弃
-                boolean annoyed = pair.annoyanceTracker().recordTrigger(currentTime, minIntervalMs);
-                if (annoyed) {
-                    // 神明厌弃！向附近玩家发送警告消息
-                    sendAnnoyanceWarning(level, pair.controller());
-                    
-                    // 立即强制失效（神罚）
-                    cachedStatus.put(pair.controller(), FormationStatus.INCOMPLETE);
-                    changes.put(pair.controller(), FormationStatus.INCOMPLETE);
-                }
-                
-                if (candidates == null) candidates = new HashSet<>();
-                candidates.add(pair.controller);
-            }
-        }
-        
-        return candidates;
-    }
-    
-    /**
-     * 向多方块结构所在区块内的所有玩家发送神明厌弃警告
-     */
-    private void sendAnnoyanceWarning(Level level, MultiblockControllerGoblinMachine controller) {
-        BlockPos controllerPos = controller.getPos();
-        int radius = 64; // 警告范围
-        
-        for (Player player : level.players()) {
-            if (player.blockPosition().distSqr(controllerPos) <= radius * radius) {
-                // 发送聊天消息警告
-                player.sendSystemMessage(Component.translatable(
-                    "message.goblintech.deity_annoyed",
-                    controller.getDefinition().getLocalizedName()
-                ));
-            }
-        }
-    }
-    
-    // 辅助类：AABB 与 Controller 的配对（含厌烦机制）
-    private record AABBControllerPair(
-            AABB aabb, 
-            MultiblockControllerGoblinMachine controller,
-            AnnoyanceTracker annoyanceTracker) {}
-    
-    /**
-     * 厌烦追踪器 - 记录神明被惊扰的频率
-     */
-    private static class AnnoyanceTracker {
-        /** 最近被触发的时刻列表（长度固定为阈值） */
-        private final long[] recentTriggerTimes;
-        /** 当前列表索引 */
-        private int currentIndex = 0;
-        /** 是否已被神明厌弃 */
-        private boolean abandoned = false;
-        /** 厌弃时间戳（用于冷却） */
-        private long abandonmentTime = 0;
-        
-        public AnnoyanceTracker(int threshold) {
-            this.recentTriggerTimes = new long[threshold];
-            Arrays.fill(recentTriggerTimes, -1); // -1 表示未使用
-        }
-        
-        /**
-         * 记录一次触发，返回是否触发厌弃
-         */
-        public boolean recordTrigger(long currentTime, long minIntervalMs) {
-            if (abandoned) {
-                // 检查是否过了冷却期
-                if (currentTime - abandonmentTime > ConfigHolder.INSTANCE.machines.multiblockAnnoyanceCooldown * 1000L) {
-                    abandoned = false; // 冷却结束，恢复检测
-                }
-                return false;
-            }
-            
-            // 检查与上一次触发的间隔
-            long lastTime = recentTriggerTimes[(currentIndex - 1 + recentTriggerTimes.length) % recentTriggerTimes.length];
-            if (lastTime != -1 && currentTime - lastTime < minIntervalMs) {
-                // 间隔过短，记录这次触发
-                recentTriggerTimes[currentIndex] = currentTime;
-                currentIndex = (currentIndex + 1) % recentTriggerTimes.length;
-                
-                // 检查是否填满（连续触发次数达到阈值）
-                if (recentTriggerTimes[(currentIndex - 1 + recentTriggerTimes.length) % recentTriggerTimes.length] != -1) {
-                    abandoned = true;
-                    abandonmentTime = currentTime;
-                    return true; // 触发厌弃
-                }
-            } else {
-                // 间隔足够长，重置列表
-                Arrays.fill(recentTriggerTimes, -1);
-                recentTriggerTimes[0] = currentTime;
-                currentIndex = 1;
-            }
-            
-            return false;
-        }
-        
-        public boolean isAbandoned() {
-            return abandoned;
-        }
-        
-        /**
-         * 重置厌弃状态（通过拜拜重新获得神明关注）
-         */
-        public void reset() {
-            abandoned = false;
-            abandonmentTime = 0;
-            Arrays.fill(recentTriggerTimes, -1);
-            currentIndex = 0;
-        }
-    }
-    
-    /**
-     * 查询指定 Controller 的当前状态（不触发神谕计算）
-     */
-    public FormationStatus getStatus(MultiblockControllerGoblinMachine controller) {
-        return cachedStatus.getOrDefault(controller, FormationStatus.INCOMPLETE);
-    }
-    
-    /**
-     * 查询指定位置期望放置什么 Part（神告诉哥布林该放什么）
-     */
-    public ExpectedPartQuery queryExpectedPart(
-            MultiblockControllerGoblinMachine controller, BlockPos pos) {
+    public List<BlockPos> queryAvailablePositions(
+            GoblinControllerMachine controller, int partTypeId, Player player) {
         IDeityOracle oracle = oracles.get(controller);
-        if (oracle == null) return ExpectedPartQuery.NONE;
-        return oracle.queryExpectedPart(pos);
+        if (oracle == null) return List.of();
+        var positions = oracle.getAvailablePositions(partTypeId);
+        var hitCache = playerHitCaches.computeIfAbsent(player, k -> new HitCache());
+        hitCache.addController(controller, positions);
+        return positions;
+    }
+
+    /**
+     * 【神棍描述】神谕交集 — 共享 Part 时取两 Controller 的交集
+     */
+    public List<BlockPos> queryIntersection(
+            GoblinControllerMachine a, GoblinControllerMachine b,
+            int partTypeId, Player player) {
+        var posA = oracles.get(a).getAvailablePositions(partTypeId);
+        var posB = oracles.get(b).getAvailablePositions(partTypeId);
+        var intersection = new ArrayList<>(posA);
+        intersection.retainAll(posB);
+        var hitCache = playerHitCaches.get(player);
+        if (hitCache != null) {
+            hitCache.clear();
+            hitCache.addController(a, intersection);
+            hitCache.addController(b, intersection);
+        }
+        return intersection;
+    }
+
+    /** 取消放置 — 清理命中缓存 */
+    public void clearHitCache(Player player) {
+        playerHitCaches.remove(player);
+    }
+
+    /**
+     * Part 放置 — 检查命中缓存，直接通知对应 Controller
+     */
+    public void onPartPlaced(BlockPos pos, int partTypeId) {
+        for (var it = playerHitCaches.entrySet().iterator(); it.hasNext(); ) {
+            var entry = it.next();
+            var hitCache = entry.getValue();
+            if (hitCache.contains(pos)) {
+                for (var ctrl : hitCache.getControllersFor(pos)) {
+                    IDeityOracle oracle = oracles.get(ctrl);
+                    if (oracle == null) continue;
+                    oracle.markOccupied(pos, partTypeId);
+                    FormationStatus status = oracle.checkFormation();
+                    cachedStatus.put(ctrl, status);
+                    if (status instanceof FormationStatus.Formed) ctrl.onStructureFormed();
+                }
+                it.remove();
+            }
+        }
+    }
+
+    /**
+     * 【神棍描述】Part 拆除告知 — Part 主动告诉 Deity 自己属于哪个 Controller
+     * 
+     * <p>【工程描述】Part 自身携带 controllerPositions 元数据，
+     * 拆除时直接传递给 Deity，无需空间哈希查找。
+     */
+    public void onPartRemoved(Set<BlockPos> ctrlPositions, BlockPos worldPos, int partTypeId) {
+        for (BlockPos ctrlPos : ctrlPositions) {
+            GoblinControllerMachine ctrl = findController(ctrlPos);
+            if (ctrl == null) continue;
+            IDeityOracle oracle = oracles.get(ctrl);
+            if (oracle == null) continue;
+            oracle.markVacant(worldPos);
+            FormationStatus newStatus = oracle.checkFormation();
+            FormationStatus oldStatus = cachedStatus.getOrDefault(ctrl, FormationStatus.INCOMPLETE);
+            cachedStatus.put(ctrl, newStatus);
+            if (oldStatus instanceof FormationStatus.Formed
+                && newStatus instanceof FormationStatus.Incomplete) {
+                ctrl.onStructureInvalid();
+            }
+        }
+    }
+
+    /** 边界方块变更 — 仅 Enclosure 模式感知非 Part 方块 */
+    public void onBoundaryBlockChanged(Level level, BlockPos pos,
+                                        BlockState oldState, BlockState newState) {
+        for (var pair : roughAABBIndex) {
+            if (!pair.aabb.contains(pos)) continue;
+            if (pair.controller().getDefinitionData().verifyMode() != VerifyMode.ENCLOSURE) continue;
+            IDeityOracle oracle = oracles.get(pair.controller());
+            if (oracle != null) oracle.onBlockChanged(pos, oldState, newState);
+        }
     }
     
     // === 注册/注销（Controller 的"皈依"与"叛离"） ===
-    
-    public void registerController(MultiblockControllerGoblinMachine controller) {
+
+    public void registerController(GoblinControllerMachine controller) {
         IDeityOracle oracle = createOracle(controller);
         oracles.put(controller, oracle);
-        
-        // 注册精确空间索引：所有可能被该 Controller 覆盖的坐标
-        for (BlockPos coveredPos : oracle.getCoveredPositions()) {
-            posToControllers.computeIfAbsent(coveredPos.asLong(), 
-                k -> new HashSet<>()).add(controller);
+        // 仅 Enclosure 模式注册粗略范围索引（边界方块变更感知）
+        if (controller.getDefinitionData().verifyMode() == VerifyMode.ENCLOSURE) {
+            int threshold = ConfigHolder.INSTANCE.machines.multiblockAnnoyanceThreshold;
+            roughAABBIndex.add(new AABBControllerPair(
+                oracle.getRoughAABB(), controller, new AnnoyanceTracker(threshold)));
         }
-        
-        // 注册粗略范围索引：用于快速预筛选（含厌烦追踪器）
-        int threshold = ConfigHolder.INSTANCE.machines.multiblockAnnoyanceThreshold;
-        roughAABBIndex.add(new AABBControllerPair(
-            oracle.getRoughAABB(), 
-            controller, 
-            new AnnoyanceTracker(threshold)
-        ));
-        
         cachedStatus.put(controller, FormationStatus.INCOMPLETE);
     }
-    
-    public void unregisterController(MultiblockControllerGoblinMachine controller) {
-        IDeityOracle oracle = oracles.remove(controller);
-        if (oracle != null) {
-            // 注销精确空间索引
-            for (BlockPos pos : oracle.getCoveredPositions()) {
-                var set = posToControllers.get(pos.asLong());
-                if (set != null) {
-                    set.remove(controller);
-                    if (set.isEmpty()) posToControllers.remove(pos.asLong());
-                }
-            }
-            
-            // 注销粗略范围索引
-            roughAABBIndex.removeIf(pair -> pair.controller() == controller);
-        }
+
+    public void unregisterController(GoblinControllerMachine controller) {
+        oracles.remove(controller);
+        roughAABBIndex.removeIf(pair -> pair.controller() == controller);
         cachedStatus.remove(controller);
     }
-    
-    private IDeityOracle createOracle(MultiblockControllerGoblinMachine ctrl) {
-        return switch (ctrl.getDefinitionData().verifyMode()) {
-            case FIXED     -> new StructureBitmap(...);
-            case SECTIONED -> new SectionedBitmap(...);
-            case ENCLOSURE -> new EnclosureValidator(...);
-        };
+
+    private GoblinControllerMachine findController(BlockPos pos) {
+        return (GoblinControllerMachine) MetaMachine.getMachine(/* level */ null, pos);
+    }
+
+    private IDeityOracle createOracle(GoblinControllerMachine ctrl) {
+        // 从工厂获取预计算模板，clone 为独立实例
+        OracleTemplate template = GoblinMultiblockRegistrate.getTemplate(
+            ctrl.getDefinition().getId());
+        return template.cloneOracle();
+    }
+
+    // === 命中缓存内部类 ===
+    private static class HitCache {
+        private final Map<BlockPos, List<GoblinControllerMachine>> posToControllers = new HashMap<>();
+        void addController(GoblinControllerMachine ctrl, List<BlockPos> positions) {
+            for (BlockPos pos : positions)
+                posToControllers.computeIfAbsent(pos, k -> new ArrayList<>()).add(ctrl);
+        }
+        boolean contains(BlockPos pos) { return posToControllers.containsKey(pos); }
+        List<GoblinControllerMachine> getControllersFor(BlockPos pos) {
+            return posToControllers.getOrDefault(pos, List.of());
+        }
+        void clear() { posToControllers.clear(); }
     }
 }
 ```
+
+##### 模板预计算（GoblinMultiblockRegistrate）
+
+GTCEu 的机器注册是这样写的：
+
+```java
+// GTMultiMachines.java — GTCEu 原生写法
+public static final MultiblockMachineDefinition COKE_OVEN = REGISTRATE
+    .multiblock("coke_oven", CokeOvenMachine::new)
+    .rotationState(RotationState.ALL)
+    .pattern(def -> FactoryBlockPattern.start()
+        .aisle("XXX", "XXX", "XXX")
+        .aisle("XXX", "XCX", "XXX")
+        .aisle("XXX", "XSX", "XXX")
+        .where('S', controller(blocks(def.getBlock())))
+        .where('X', blocks(GTBlocks.HIGH_POWER_CASING.get())
+            .or(CokeOvenMachine.getHatchPredicates()))
+        .where('C', blocks(COIL_BLOCK.get()))
+        .build())
+    .register();
+```
+
+问题：`.pattern()` 传入的 Lambda 只在 GTCEu 注册时被调用一次生成 BlockPattern，GoblinMachineDeity 注册 Controller 时还需要再次解析 BlockPattern 来构建 BitMap——同一份结构信息处理了两次。
+
+**解决方案**：写一个 `GoblinMultiblockRegistrate`，包装 `GTRegistrate`，在 `.register()` 时拦截 BlockPattern 并预计算 OracleTemplate。
+
+```java
+// GoblinMultiblockRegistrate.java
+public class GoblinMultiblockRegistrate {
+
+    /**
+     * GoblinTech 自己的 GTRegistrate — modId = "goblintech"。
+     * 这意味着所有资源路径（方块/物品/模型/纹理/语言键/数据生成）
+     * 都流向 goblintech: 命名空间，而非 gtceu:。
+     */
+    public static final GTRegistrate REGISTRATE = GTRegistrate.create(GoblinTech.ID);
+
+    /** OracleTemplate 注册表：方块名 → 预计算模板 */
+    private static final Map<ResourceLocation, OracleTemplate> TEMPLATES = new HashMap<>();
+
+    private GoblinMultiblockRegistrate() {}
+
+    /**
+     * 注册一个 Goblin 多方块机器。
+     * 通过 GoblinTech 自己的 GTRegistrate，资源路径 = goblintech:xxx。
+     */
+    public static <T extends GoblinControllerMachine> GoblinMultiblockBuilder<T> goblinMultiblock(
+            String name,
+            Function<BlockEntityCreationInfo, T> machineFactory) {
+
+        MultiblockMachineBuilder<MultiblockMachineDefinition, ?> builder =
+            REGISTRATE.multiblock(name, machineFactory);
+
+        return new GoblinMultiblockBuilder<>(name, builder);
+    }
+
+    public static OracleTemplate getTemplate(ResourceLocation id) {
+        return TEMPLATES.get(id);
+    }
+}
+```
+
+> `GTRegistrate.create(modId)` 是 GTCEu 的公开 API，addon mod 每条产线都会调用。它按 modId 缓存实例，`create("goblintech")` 创建一个全新的 Registrate，方块/物品/数据生成全部自动归属 `goblintech:` 命名空间。无需额外子类。
+
+**GoblinMultiblockBuilder — 对现有写法的零侵入扩展**：
+
+```java
+// GoblinMultiblockBuilder.java
+public class GoblinMultiblockBuilder<T extends GoblinControllerMachine> {
+
+    private final String name;
+    private final MultiblockMachineBuilder<MultiblockMachineDefinition, ?> inner;
+    private VerifyMode verifyMode;
+    private Consumer<GoblinMultiblockDefinition.Builder> definitionBuilder;
+
+    /**
+     * 设定验证模式（FIXED / SECTIONED / ENCLOSURE）
+     */
+    public GoblinMultiblockBuilder<T> verifyMode(VerifyMode mode) {
+        this.verifyMode = mode;
+        return this;
+    }
+
+    /**
+     * 设定机器结构定义。
+     * 注意：pattern() 仍需通过 inner 调用（GTCEu 标准流程），
+     * 此处 definition 管理额外的 Goblin 属性（Part 位置表、slotTypes 等）。
+     */
+    public GoblinMultiblockBuilder<T> definition(Consumer<GoblinMultiblockDefinition.Builder> builder) {
+        this.definitionBuilder = builder;
+        return this;
+    }
+
+    /**
+     * 代理 GTCEu Builder 的标准方法（链式调用风格）
+     */
+    @SuppressWarnings("unchecked")
+    public GoblinMultiblockBuilder<T> pattern(
+            Function<MultiblockMachineDefinition, BlockPattern> p) {
+        inner.pattern(p);
+        return this;
+    }
+
+    // ... rotationState, appearanceBlock, tooltips 等代理方法 ...
+
+    /**
+     * ★ 关键：注册时拦截 BlockPattern 并预计算 OracleTemplate
+     */
+    public MultiblockMachineDefinition register() {
+        // 1. 先走 GTCEu 注册 ← 此时 BlockPattern 已构建完毕
+        MultiblockMachineDefinition def = inner.register();
+
+        // 2. 从定义中提取 BlockPattern，预计算 OracleTemplate
+        BlockPattern pattern = def.getPatternFactory().get();
+        GoblinMultiblockDefinition goblinDef = GoblinMultiblockDefinition
+            .builder(def.getId())
+            .verifyMode(verifyMode)
+            .blockPattern(pattern)  // ← 直接复用 GTCEu 已解析的 BlockPattern
+            .apply(definitionBuilder)
+            .build();
+
+        // 3. 预计算并存入模板注册表
+        OracleTemplate template = switch (verifyMode) {
+            case FIXED     -> StructureBitmapTemplate.from(goblinDef);
+            case SECTIONED -> SectionedBitmapTemplate.from(goblinDef);
+            case ENCLOSURE -> EnclosureTemplate.from(goblinDef);
+        };
+        GoblinMultiblockRegistrate.TEMPLATES.put(def.getId(), template);
+
+        return def;
+    }
+}
+```
+
+**实际使用对比**：
+
+```java
+// === GTCEu 原生写法（现有） ===
+public static final MultiblockMachineDefinition COKE_OVEN = REGISTRATE
+    .multiblock("coke_oven", CokeOvenMachine::new)
+    .pattern(def -> FactoryBlockPattern.start()
+        .aisle("XXX", "XXX", ...)
+        .where('X', ...)
+        .build())
+    .register();
+
+// === GoblinMultiblockRegistrate 写法（目标） ===
+public static final MultiblockMachineDefinition STEAM_BOILER =
+    GoblinMultiblockRegistrate.goblinMultiblock("steam_boiler", SteamBoilerMachine::new)
+        .verifyMode(VerifyMode.FIXED)
+        .pattern(def -> FactoryBlockPattern.start()
+            .aisle("XXX", "XXX", "XXX")
+            .aisle("XXX", "XCX", "XXX")
+            .aisle("XXX", "XSX", "XXX")
+            .where('S', controller(blocks(def.getBlock())))
+            .where('X', blocks(GTBlocks.STEEL_CASING.get())
+                .or(SteamBoilerMachine.getHatchPredicates()))
+            .where('C', blocks(FIREBOX_BLOCK.get()))
+            .build())
+        .definition(b -> b
+            .partSlot('X', new PartSlot("casing", PartSlotType.HULL))
+            .partSlot('C', new PartSlot("firebox", PartSlotType.HULL))
+            .hatchSlot(SteamBoilerMachine.getHatchPredicates()))
+        .register();
+```
+
+**关键变化**：
+- 多一行 `.verifyMode(VerifyMode.FIXED)` — 告诉 Factory 用什么模式预计算模板
+- 多一段 `.definition(...)` — 声明额外的 Goblin 属性（Part 位置语义、IO 类型映射）
+- `.pattern()` 仍然是 GTCEu 标准写法（`FactoryBlockPattern.start()...`），**零学习成本**
+- `.register()` 调用后自动完成：GTM 注册 + OracleTemplate 预计算 → 存模板表
+
+与上一版的区别：
+
+| | 上一版（GoblinMultiblockFactory.register） | 现版（GoblinMultiblockRegistrate） |
+|------|------------------------------------------|-----|
+| 注册方式 | 额外调用 `Factory.register()` | 替换 `REGISTRATE.multiblock()` 为 `GoblinMultiblockRegistrate.goblinMultiblock()` |
+| BlockPattern 复用 | 需自己解析 | 直接复用 GTCEu 已构建的 BlockPattern |
+| 对现有代码侵入 | 需要加一行独立调用 | 仅替换第一行调用对象 |
+| 学习成本 | 需要了解两套 API | 与 GTCEu 写法高度一致 |
 
 ##### 神谕接口（IDeityOracle）
 
 ```java
 public interface IDeityOracle {
-    /** 方块变更通知 */
-    void onBlockChanged(BlockPos pos, BlockState oldState, BlockState newState);
-    
+    /** Part 放置 — 标记位置被占用 */
+    void markOccupied(BlockPos pos, int partTypeId);
+
+    /** Part 移除 — 标记位置空闲 */
+    void markVacant(BlockPos pos);
+
     /** 神谕判定：当前是否成型 */
     FormationStatus checkFormation();
-    
-    /** 查询某个位置期望的 Part 类型（神告诉哥布林该放什么） */
+
+    /** 查询某个位置期望的 Part 类型（供 Outliner 用） */
     ExpectedPartQuery queryExpectedPart(BlockPos pos);
-    
-    /** 该神谕覆盖的所有坐标（用于精确空间索引注册） */
-    Collection<BlockPos> getCoveredPositions();
-    
-    /** 获取粗略包围盒（用于快速预筛选，神明懒得理会范围外的僭越） */
+
+    /** 查询指定 Part 类型的可用空位（供玩家绑定 Part 时返回可选位置） */
+    List<BlockPos> getAvailablePositions(int partTypeId);
+
+    /** 获取粗略包围盒（仅 Enclosure 模式用于边界方块变更感知） */
     AABB getRoughAABB();
+
+    /** 边界方块变更通知（仅 Enclosure 模式） */
+    void onBlockChanged(BlockPos pos, BlockState oldState, BlockState newState);
 }
 ```
 
-##### 事件驱动流程（完整）
+##### 事件驱动流程（优化后）
+
+核心洞察：**Part 自身携带了"我属于哪个 Controller"的信息，不需要靠空间哈希来猜**。
 
 ```
-BlockEvent.EntityPlace / BlockEvent.Break（哥布林僭越神权）：
-  └─ GoblinMachineDeity.onBlockChanged(level, pos, oldState, newState)
-       ├─ roughAABBCheck(pos) —— 粗略范围检查（神明懒得理会范围外的僭越）
-       │   └─ 不在任何机器范围内 → 直接返回空（神忽略）
-       ├─ 通过 posToControllers 精确查找受影响的 Controller
-       ├─ 调用每个 Controller 的 oracle.onBlockChanged()
-       ├─ 调用 oracle.checkFormation()
-       └─ 返回状态变化的 Controller 列表
-            │
-            ├─ 新成型 → controller.onStructureFormed()（取悦神明）
-            └─ 新失效 → controller.onStructureInvalid()（神罚）
+═══════════════════════════════════════════════════════════════
+放置路径 — 从 Part 物品交互 → 绑定 → 放置 → 结构验证
+═══════════════════════════════════════════════════════════════
+
+1. 持有 GoblinTieredPartMachine 物品，右键 GoblinControllerMachine（拜拜）
+   └─ Deity.queryAvailablePositions(controller, partType)
+        ├─ 返回该 Controller 蓝图中该 Part 可放置的位置列表
+        └─ Deity 缓存：{Controller A} → {pos1, pos2, pos3}
+             （命中缓存，用于快速判断后续方块变更是否"命中"此 Controller）
+
+2. 右键另一个 GoblinControllerMachine（支持共享，取交集）
+   └─ Deity.queryIntersection(controllerA, controllerB, partType)
+        ├─ 返回两 Controller 的交集位置
+        └─ Deity 缓存缩小：{Controller A, Controller B} → {pos2}
+
+3. 右键交集位置 — 放置 GoblinPartMachine 方块
+   └─ BlockEvent.EntityPlace 触发
+        └─ Deity 命中缓存命中 pos2 → 直接通知 Controller A 和 Controller B
+             ├─ Controller A.oracle.markOccupied(pos2, partType)
+             ├─ Controller B.oracle.markOccupied(pos2, partType)
+             └─ 各自 checkFormation() → Formed? onStructureFormed()
+
+4. 取消放置（切物品/丢弃）
+   └─ Deity.clearHitCache(player) → 清除命中缓存
+
+═══════════════════════════════════════════════════════════════
+移除路径 — Part 携带自身元数据，直接告知 Deity
+═══════════════════════════════════════════════════════════════
+
+扳手拆除 / 直接破坏：
+  GoblinPartMachine 方块被移除
+    ├─ ★ Part 自身知道属于哪些 Controller（controllerPositions）
+    ├─ 调用 Deity.onPartRemoved(controllerPositions, worldPos, partType)
+    │    ├─ 对每个 Controller：
+    │    │    ├─ oracle.markVacant(worldPos)
+    │    │    ├─ checkFormation() → 更新成型状态
+    │    │    └─ 如果成型状态变更 → onStructureInvalid()
+    │    └─ ★ 无需 posToControllers 空间哈希，Part 直接告诉 Deity 属于谁
+    └─ restoreOriginalBlock(true/false)
+
+═══════════════════════════════════════════════════════════════
+边界方块变更 — 仅 Enclosure 模式需要
+═══════════════════════════════════════════════════════════════
+
+非 Part 方块变更（如墙壁/门被破坏）：
+  └─ Deity.onBlockChanged(level, pos, oldState, newState)
+       ├─ roughAABBIndex 粗略筛选 Enclosure 模式的 Controller
+       └─ 命中 → oracle.onBoundaryChanged() → invalidate 缓存
 ```
 
-##### 设计优势
+##### 三种变更路径对比
 
-| 维度 | 传统（神谕嵌入 Controller） | 集中神（GoblinMachineDeity） |
-|------|-------------------------------|---------|
-| 查找受影响的 Controller | O(k) 遍历所有 Controller | O(1) 空间哈希查找 |
-| 共享 Part 的多个 Controller | 每个独立检查 | 一次神谕调用批量处理 |
-| 状态缓存 | 各自维护 | 神统一缓存 |
-| 可替换性 | Controller 硬编码 | `IDeityOracle` 接口，注入不同实现 |
-| Mixin 友好 | 需 mixin Controller | 可 mixin 神的 `onBlockChanged` 或替换整个神实例 |
-| 查询期望 Part | 需持有 Controller 引用 | `queryExpectedPart()` 一站式查询 |
+| 变更类型 | 如何定位 Controller | 查找复杂度 | 原理 |
+|---------|---------------------|-----------|------|
+| Part 放置 | Deity 命中缓存（放置前已绑定） | O(1) 直接命中 | 放置前互交时已缓存可用位置 |
+| Part 移除 | Part 自带 `controllerPositions` | O(1) 直接告知 | Part 知道自己属于谁 |
+| 边界方块变更 | roughAABBIndex 粗略筛选 | O(n) 遍历 Enclosure 模式机器 | 只有围合模式需要感知非 Part 方块 |
+
+##### design 优势（优化后）
+
+| 维度 | GTCEu 轮询 | 旧集中神（纯空间哈希） | 新集中神（Part 主动告知） |
+|------|-----------|---------------------|------------------------|
+| Part 放置定位 | — | posToControllers O(1) 哈希 | Deity 命中缓存 O(1) 直接命中 |
+| Part 移除定位 | — | posToControllers O(1) 哈希 | Part 带元数据 O(1) 直接告知 |
+| 边界方块变更 | 每 5 tick 轮询 | posToControllers O(1) | roughAABBIndex O(n_enc) 仅枚举围合机器 |
+| 空间索引维护 | — | 需维护 posToControllers 增删 | ★ 不再需要 posToControllers |
+| 取消放置 | — | 不适用 | clearHitCache() 即时清理 |
+| 信息流方向 | 拉（主动查） | 推（被动感知） | 拉 + 推混合（数据跟着数据走） |
 
 ##### AOT 可行性分析
 
@@ -1274,34 +1497,432 @@ BlockEvent.EntityPlace / BlockEvent.Break（哥布林僭越神权）：
 - 配置文件控制：`deity.backend = java | native`（默认 java）
 - 关键价值是**架构的开放封闭原则**，而非实际性能收益
 
-#### 8.7.14 与 ShamanItem 的整合
+#### 8.7.14 与 GoblinShamanItem 的整合
 
 ```
-ShamanItem（蓝图腾）创建时：
-  ├─ 从 Controller 的 getDefinitionData() 序列化结构定义
-  └─ 蓝图 NBT 中包含 verifyMode + 结构参数
-
 蓝图大炮打印完成后（显灵）：
   ├─ 所有 Part 方块 + Controller 方块放置完毕
   └─ GoblinMachineDeity.registerController(controller)
        └─ oracle.checkFormation() → 如果通过 → onStructureFormed()
-            └─ 如果未通过 → 等待后续手动补 Part
 
-手动 Part 放置时（仪式四）：
-  ├─ GoblinMachineDeity.onBlockChanged(pos, oldState, newState)
-  └─ 如果返回 Formed → 客户端 Outliner 清除 + onStructureFormed()
+手动 Part 放置时（仪式四，通过 Deity 命中缓存）：
+  1. 玩家右键 Controller → Deity.queryAvailablePositions() 返回位置 + 缓存
+  2. 玩家右键位置 → 放置方块 → Deity.onPartPlaced() 命中缓存直接通知 Controller
+       └─ oracle.markOccupied → checkFormation → Formed? onStructureFormed()
+
+拆卸 Part 时（Part 自带 Controller 元数据）：
+  └─ onMachineDestroyed() → Deity.onPartRemoved(ctrlPositions, pos, partType)
+       └─ oracle.markVacant → checkFormation → 失效? onStructureInvalid()
+
+#### 8.7.15 GoblinMachineDeityShaman（仪式锻造机）
+
+解决了"蓝图腾从哪来"的问题。仪式——只展示不消耗。原材料供奉给神明过目，神明回赐蓝图。
+
+##### 数据流
+
+```
+GoblinMachineDeityShaman（GTM 单方块机器）
+  ├─ 输入槽：展示架（供奉台）—— 所需材料（不消耗）
+  │   └─ 自动配方：由 GoblinMultiblockRegistrate.register() 时从 OracleTemplate 生成
+  ├─ 输出槽：GoblinShamanItem（附魔蓝图）
+  └─ 仪式过程：
+       ├─ 机器 GUI 中展示完整结构预览（Tier 1 JEI Scene widget 内嵌）
+       ├─ 仪式进行：播放粒子 + 音效动画（哥布林跳大舞）
+       ├─ 结束后：输出 GoblinShamanItem，输入物品不消耗
+       └─ 等于"一键拜拜"，免去仪式一中逐个下蹲右键的操作
+```
+
+##### 配方自动生成
+
+不需要单独写 JSON 配方。直接复用 `GoblinScripture`（已有的 `extends GTRecipe`），
+在 `GoblinMultiblockRegistrate.register()` 时从 OracleTemplate 自动生成。
+
+##### GoblinScripture 扩展
+
+只需加两样东西：
+
+```java
+// GoblinScripture.java 新增：
+public boolean consumeInputs = true;  // ★ DeityShaman 设为 false
+
+/**
+ * 从 OracleTemplate 自动生成 GoblinScripture。
+ * @param template  预计算的模板（BitSet + blockPos 映射 + slotTypes）
+ * @param recipeType 仪式配方类型
+ * @param outputId   输出物品 ID（指向对应机器的 GoblinShamanItem）
+ */
+public static GoblinScripture fromOracleTemplate(
+        OracleTemplate template, GTRecipeType recipeType, ResourceLocation outputId) {
+
+    Map<Block, Integer> counts = template.countBlocks();
+    int totalBlocks = counts.values().stream().mapToInt(i -> i).sum();
+
+    var scripture = new GoblinScripture(
+        recipeType,
+        counts.entrySet().stream()
+            .collect(Collectors.toMap(
+                e -> ItemRecipeCapability.CAP,
+                e -> List.of(new Content(e.getKey().asItem().getDefaultInstance(), e.getValue()))
+            )),
+        Map.of(ItemRecipeCapability.CAP, List.of(new Content(outputId, 1))),
+        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+        List.of(), new CompoundTag(),
+        Math.max(20, totalBlocks * 20),  // 最少 1 秒
+        recipeType.getCategory("default"), 0);
+
+    scripture.mode = RecipeMode.TRANSFER;     // 反正不消耗，模式无所谓
+    scripture.consumeInputs = false;          // ★ 关键：供奉品不扣
+    return scripture;
+}
+```
+
+> `fromOracleTemplate` 只需遍历 `blockTypes[]` 去重计数，然后构造 `inputs` Map。`GTRecipe` 构造函数参数较多但全是标准字段，无需理解 GTCEu 内部机制。
+
+##### 不消耗机制
+
+不再需要两套 inventory。`GoblinScripture.consumeInputs = false` 告诉 `GoblinMachineDeityShaman` 的工作逻辑：结束后不调用 `inventory.setStackInSlot(i, ItemStack.EMPTY)`。
+
+```
+GoblinMachineDeityShaman 单套 inventory（与普通 GTM 机器一致）
+  ├─ 玩家放入材料 → 标准输入端
+  ├─ 触发配方开始
+  │   ├─ 仪式粒子 + 音效动画
+  │   └─ 输入槽位被工作逻辑"锁定"（机器在跑，不可取出）
+  ├─ 配方完成
+  │   ├─ check scripture.consumeInputs
+  │   │   ├─ true（正常配方）→ 清空输入端 → 输出产物
+  │   │   └─ false（仪式配方）→ 不清空输入端！只输出产物
+  │   └─ 输出槽产出 GoblinShamanItem
+  └─ 输入材料原封不动留在槽位中（下次再触发还能用）
+```
+
+> `consumeInputs = false` 对 GoblinScripture 来说是天然设计——`RecipeMode.MODIFY` 本就有"输入物品不消耗"的理念，只是 MODIFY 修改原物品内容。仪式锻造是"输入展示、独立产出"，语义不同但机制共享。
+
+##### 自动注册
+
+在 `GoblinMultiblockRegistrate.register()` 末尾：
+
+```java
+public MultiblockMachineDefinition register() {
+    MultiblockMachineDefinition def = inner.register();
+    // ... 预计算 OracleTemplate ...
+
+    // ★ 自动生成 GoblinScripture（配方类型和输出都是固定的）
+    GoblinScripture scripture = GoblinScripture.fromOracleTemplate(
+        template, def.getId());
+    definition.recipeLogic()
+        .addScripture(scripture);
+
+    return def;
+}
+```
+
+##### Package 输出扩展（待调研）
+
+**问题**：DeityShaman 输出的蓝图腾 + 材料，能否直接打包为 Create Package 发送给蓝图大炮？
+
+**Create 蓝图大炮的输入方式**：
+- 蓝图大炮有 5 槽位：蓝图（Schematic）+ 书入 + 书出 + 材料列表出 + 火药
+- **建筑材料**不进入大炮库存——大炮从相邻方块的 `ItemHandler` 拉取
+- 蓝图大炮**不接受** Create Package 作为输入格式
+
+**可行方案**：
+
+```
+方案 A（直接供奉）：
+  材料 → DeityShaman → GoblinShamanItem（蓝图）
+  蓝图 + 材料分别放入大炮（手动或自动化）
+
+方案 B（Package + Repackager 拆包）：
+  材料 → DeityShaman Wrapper Machine → Packager → Package（包裹）
+    → PackagePort → 物流网络 → 大炮附近的 Frogport
+      → Repackager 拆包 → 大炮从 Repackager 拉材料
+  蓝图单独放入大炮
+
+方案 C（DeityShaman 直接推送）：
+  材料 → DeityShaman → GoblinShamanItem（蓝图）
+  DeityShaman 通过配置的发送位置，将材料物品主动推出
+    → 需实现 IItemHandler<N> 推送接口
+    → 可配置默认发送坐标（类似 PackagePort 的 target 地址系统）
+```
+
+| 方案 | 自动化程度 | 实现复杂度 | 需要调研 |
+|------|----------|----------|---------|
+| A | 低（手动） | 低 | 无 |
+| B | 高（全自动） | 高 | Repackager 是否可对接大炮邻近 `ItemHandler` |
+| C | 中（半自动） | 中 | DeityShaman 直接推送到配置坐标的 `BlockEntity` |
+
+> **待调研**：`Repackager` 拆包后是否能被邻近蓝图大炮通过 `IItemHandler` 拉取。如果可以，方案 B 可实现全自动蓝图打印流水线。
+
+#### 8.7.16 JEI/EMI 多方块预览优化
+
+##### 痛点
+
+GTCEu 原生 JEI 预览依赖 `BlockPattern` DSL：加载大结构时需遍历所有 aisles、逐层展开谓词匹配、计算 bounds。结构越大，预览越慢（可达数百毫秒卡住 JEI 页面）。
+
+**核心原因**：`BlockPattern` 是为了**运行时结构匹配**而设计的（丰富的谓词、沿轴重复、相对坐标系统），JEI 预览仅需**静态渲染**（同一套数据跑了两次）。
+
+##### 两种参考实现
+
+**参考 A：NeoECOAEExtension（LDLib2 Scene 方案）**
+
+```
+MultiBlockDefinition（Builder + BlockInstruction 链）
+  → MultiBlockContext.createLevel() 执行指令
+    → TrackedDummyWorld（LDLib2 虚拟世界）
+      → MultiBlockInfoWrapper.createModularUI()
+        → Scene widget（3D 渲染 + 拖拽/缩放/分层预览）
+```
+
+- 优势：绕开 BlockPattern，O(n) 直接写入虚拟世界；LDLib2 Scene 自带拖拽/缩放、按 Y 层切换(Formed 状态模拟
+- 缺点：每次预览仍需完整执行 `BlockInstruction` 链（大结构仍是 O(n) 遍历）；自定义 DSL（`setBlock`/`setBlockRepeatable`），与 Deity 神谕非同一数据源
+
+参考入口：`NeoECOAEExtension-1.21.1-1.3.4/src/main/java/cn/dancingsnow/neoecoae/integration/`
+
+**参考 B：Simulated-Project（蓝图风格 + 正交投影）**
+
+```
+DiagramScreen（FBO 渲染 + Veil 后处理管线）
+  → 正交投影（无近大远小透视）
+  → 固定视角（不可拖动旋转，仅按钮切换）
+  → 羊皮纸底纹 + 铅笔线条勾勒
+  → 旋转/放缩按钮、便签注释
+```
+
+- 参考要点：**正交投影 + 固定视角**（这正是蓝图腾需要的效果）；Veil PostPipeline 勾勒、FBO 渲染管线
+- **不需要**：去色/灰度（保留方块原色以标识 IO 类型）、力学矢量图部分
+- 劣势：非 JEI/EMI 集成，需自建 GUI
+
+参考入口：`Simulated-Project-main/simulated/common/src/main/java/dev/simulated_team/simulated/content/entities/diagram/`
+
+##### 推荐方案：JEI 快速预览 + 蓝图腾详览，同源双视
+
+核心思路：**一份 OracleTemplate，两个视图。**
+
+```
+OracleTemplate (BitSet + blockPos映射 + slotTypes)
+  ├─ Tier 1: JEI/EMI 嵌入 → 单视口 Scene widget（快速浏览）
+  └─ Tier 2: 四象限蓝图腾 → 独立 GUI（详细检视）← 从 JEI 点击打开 / 手持蓝图右键打开
+```
+
+##### Tier 1：JEI/EMI 嵌入预览
+
+JEI 中直接嵌入一个 LDLib2 Scene widget，参考 NeoECOAEExtension 的做法。
+
+```
+JEI 面板中：
+┌─────────────────────────────────────┐
+│  Steam Boiler                  [详] │  ← "详"按钮 → 打开 Tier 2
+│  ┌─────────────────────────────────┐│
+│  │                                 ││
+│  │    Scene widget (透视/正交可选)   ││  ← 可拖拽旋转（JEI 标准交互）
+│  │                                 ││
+│  └─────────────────────────────────┘│
+│  E: 1  L: -1  F: false              │  ← 沿用 NeoECOAEExtension 的 E/L/F
+│                                      │
+│  所需材料: [钢块×12] [火箱×1] ...     │
+└─────────────────────────────────────┘
+```
+
+- **可拖拽旋转**：JEI 标准交互（用户预期行为）
+- **E/L/F 按钮**：Expand 切换 repeat 级别 / Layer 按 Y 层切换 / Formed 切换成型状态
+- **"详"按钮**：点击打开 Tier 2 蓝图腾四象限视图
+- 实现参考：`NeoECOAEExtension/integration/emi/recipe/MultiblockEmiRecipe.java` + `MultiBlockInfoWrapper.createModularUI()`
+- 关键差异：数据源从 `MultiBlockDefinition` 换成 `OracleTemplate.exportPreviewBlocks()`
+
+##### Tier 2：四象限蓝图腾（从 JEI "详"按钮或手持蓝图右键打开）
+
+核心思路：**正交投影三视图 + 图例面板。**（与之前设计一致，但入口改为从 JEI 点击打开）
+
+##### 布局
+
+```
+┌──────────────────────────┬──────────────────────────────┐
+│  左上 · 图例              │  右上 · 三视图 ─ 正视图       │
+│  ┌─────────────────────┐ │  (0° 俯仰, 0° 偏航)          │
+│  │ 线形/颜色 = IO类型    │ │                              │
+│  │ ██ 输入 ██ 输出      │ │  ┌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐   │
+│  │ ══ 能量 ══ 流体     │ │  ┊     正视图              ┊   │
+│  │ ─ ─ 物品 ─ ─ 红石   │ │  └╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘   │
+│  └─────────────────────┘ │                              │
+│                           │  ◄ 旋转按钮 / 方向切换        │
+│  上半 · IO 标记 + Part 列表│  ─ ─ ─ ─ 剖面滑块 ─ ─ ─ ─  │
+│  ┌─────────────────────┐ ├──────────────────────────────┤
+│  │ 🔍 搜索Part名称...   │ │  右下 · 三视图 ─ 俯视图       │
+│  │ ◄ 横向滚动 ────── ► │ │  (-90° 俯仰, 0° 偏航)        │
+│  │                      │ │                              │
+│  │ ██ 输入仓  [1,4]    │ │  ┌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐   │
+│  │ ██ 输出仓  [1,2]    │ │  ┊     俯视图              ┊   │
+│  │ ══ 能量输入 [0,1]   │ │  └╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘   │
+│  │ ...                  │ │                              │
+│  └─────────────────────┘ │  剖面滑块同步                  │
+│                           ├──────────────────────────────┤
+│  下半 · 方块放大预览       │  左下 · 三视图 ─ 侧视图       │
+│  ┌─────────────────────┐ │  (0° 俯仰, 90° 偏航)         │
+│  │                      │ │                              │
+│  │  鼠标悬停/点击方块      │ │  ┌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐   │
+│  │  在此放大显示          │ │  ┊     侧视图              ┊   │
+│  │                      │ │  └╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘   │
+│  └─────────────────────┘ │                              │
+└──────────────────────────┴──────────────────────────────┘
+```
+
+##### 各区域详解
+
+**左上 · 图例**
+- 列出所有 IO 标记的线形/颜色对应关系
+- 例：`█ 红色虚线框` = 物品输入、`█ 蓝色实线框` = 能量输出
+- 固定内容，帮助玩家快速理解三视图中的标记含义
+
+**上半 · IO 标记 + Part 列表**
+- 每个 IO 标记颜色/线形右侧列出对应的 `GoblinPartMachine` 类型
+- **搜索框**：Part 类型可能很多，支持搜索过滤
+- **横向滚动条**：超出显示范围的 Part 项可横向滚动
+- **`[min, max]` 区间**：每种 Part 的数量限制，如 `输入仓 [1, 4]` 表示至少 1 个最多 4 个
+
+**下半 · 方块放大预览**
+- **无操作时**：空白/闲置状态（图例预留位置）
+- **悬停三视图** → 预览方块跟随鼠标所指位置（与跟随 Outliner 联动）
+- **悬停 Part 列表项** → 若该 Part 类型只有一个位置，直接预览该方块；若有多个，预览第一个并提示"× N 个可用"
+- **点击锁定** → 方块预览锁定（不再跟随鼠标），可旋转该单一方块视角
+
+**右上 / 右下 / 左下 · 三视图**
+- 三个独立渲染面板，分别以正交投影渲染同一结构
+- 默认方向：**正视图**（俯仰 0°/偏航 0°）、**俯视图**（俯仰 -90°/偏航 0°）、**侧视图**（俯仰 0°/偏航 90°）
+- **按钮切换方向**：每个视图独立可切换（如正视图可切为后视图），不可鼠标拖动旋转
+- **剖面滑块**：锁定到整数位置的横向/纵向滑条，限制该轴的显示范围（如 Y ∈ [2, 5]）
+  - 三视图的剖面滑块**同步联动**：调整正视图的 Y 剖面 → 俯视图和侧视图同步裁剪 Y 范围
+  - 效果：可实现精确的**三视图剖面图**，方便查看内部结构
+
+##### Outliner 交互模型
+
+三视图、Part 列表、方块预览、IO 位置高亮之间存在四向联动，靠三套 Outliner 实现：
+
+| Outliner | 触发 | 外观 | 行为 |
+|----------|------|------|------|
+| **跟随 Outliner** | 鼠标在三视图上移动 | 半透明闪烁框（α ≈ 0.4） | 实时跟随鼠标 blockPos，三视图同步位置标记 |
+| **Part 高亮 Outliner** | 鼠标悬停 Part 列表 → 对应 IO 框类型 | 对应颜色高亮线框（α ≈ 0.7） | 同时在三视图标记该 Part 类型所有可用位置 |
+| **锁定 Outliner** | 点击三视图方块 / 点击 Part 列表项 | 不透明实线框（α = 1.0） | 固定在点击位置，跟随 Outliner 降 α（变为半透明继续跟随但不覆盖锁定框） |
+
+**交互流程**：
+
+```
+状态：无悬停、无锁定
+  └─ 下方预览空白、无 Outliner
+
+鼠标移入三视图
+  ├─ 三视图同步：跟随 Outliner 出现在所有视图的对应 blockPos
+  ├─ 图例联动：下方方块预览更新为 cursor 所指方块
+  ├─ Part 列表联动：若 cursor 落在 IO 位置 → 列表区对应 Part 项轻微高亮
+  └─ 跟随 Outliner α = 0.4
+
+鼠标悬停 Part 列表项（如"输入仓"）
+  ├─ Part 高亮 Outliner：三视图中所有"输入仓"位置同时点亮（α = 0.7）
+  ├─ 跟随 Outliner 降低存在感（α = 0.2，退为浅色虚线）
+  ├─ 下方方块预览：切换为预览鼠标所指 Part 类型对应的方块外观
+  └─ 如果只有一个位置 → 跟随 Outliner 跳到该位置（snap）
+
+鼠标离开 Part 列表
+  ├─ Part 高亮 Outliner 消失
+  └─ 跟随 Outliner 恢复 α = 0.4
+
+点击三视图方块（锁定）
+  ├─ 锁定 Outliner 锚定在点击位置（α = 1.0，不透明实线框）
+  ├─ 跟随 Outliner 降低存在感（α = 0.2），继续跟随鼠标但不干扰锁定框
+  ├─ 下方方块预览锁定为点击方块（不跟随鼠标变化）
+  └─ Part 列表：当前悬停 Part 项保持轻微高亮，点击对应 Part 则高亮该类型所有位置
+
+点击 Part 列表项（无悬停位置时）
+  ├─ 若该类型只有一个可用位置 → 锁定 Outliner 直接跳到该位置
+  ├─ 若该类型有多个可用位置 → Part 高亮 Outliner 标记全部（α = 0.7），锁定 Outliner 未触发
+  ├─ 下方方块预览锁定为该 Part 外观
+  └─ 再点击三视图某个位置 → 锁定 Outliner 锚定（同上）
+
+切换到下一机器/配方
+  └─ 全部重置：锁定 Outliner 清除、跟随 Outliner 清除、Part 高亮清除、预览重置为空白
+```
+
+##### 关键设计决策
+
+| 决策 | 理由 |
+|------|------|
+| **正交投影** | 工程图标准做法，无透视变形可精确判断方块位置 |
+| **不可拖动旋转** | 固定标准角度（0°/90°/180°/270°）保证三视图一致性（Tier 2 限定；Tier 1 JEI 内默认可拖拽） |
+| **保留原色** | 去色会丢失 IO 类型标记信息，颜色本身就是功能标识 |
+| **三视图联动剖面** | 与 Simulated-Project 的 E/L/F 按钮不同，三视图剖面滑块是在**空间维度**上裁剪而非在"层"上切换（Tier 2 限定） |
+| **同源双视** | Tier 1（JEI 快速浏览）+ Tier 2（四象限详览），共享同一 OracleTemplate 数据源 |
+
+##### 数据流
+
+```
+GoblinMultiblockRegistrate.register() 时：
+  → OracleTemplate 预计算完成，存入 TEMPLATES
+
+Tier 1（JEI 嵌入预览）：
+  template = GoblinMultiblockRegistrate.getTemplate(id)
+    → template.exportPreviewBlocks(repeatLevel)
+      → TrackedDummyWorld → LDLib2 Scene widget（嵌入 JEI 面板）
+
+Tier 2（四象限蓝图腾，从 JEI "详"按钮或手持蓝图右键打开）：
+  同一 template
+    → template.exportPreviewBlocks(repeatLevel)
+      → 三个 TrackedDummyWorld → 各正交投影 Scene widget
+    → template.exportSlotTypes(repeatLevel)
+      → 图例面板 + IO 标记区 + Outliner 联动
+```
+
+```java
+// oracle 新增方法
+public interface IDeityOracle {
+    // ... 已有方法 ...
+
+    /** 导出预览方块（JEI/蓝图腾预览共用） */
+    Map<BlockPos, BlockState> exportPreviewBlocks(int repeatLevel);
+
+    /** 导出每个位置的 IO 标记类型（供图例面板用） */
+    Map<BlockPos, PartSlotType> exportSlotTypes(int repeatLevel);
+}
+
+// StructureBitmap 实现
+@Override
+public Map<BlockPos, PartSlotType> exportSlotTypes(int repeatLevel) {
+    Map<BlockPos, PartSlotType> result = new HashMap<>();
+    for (int i = bitSet.nextSetBit(0); i >= 0; i = bitSet.nextSetBit(i + 1)) {
+        PartSlotType type = slotTypes.get(i); // byte → PartSlotType
+        if (type != PartSlotType.HULL) { // 外壳方块不需要标记
+            result.put(indexToPos(i), type);
+        }
+    }
+    return result;
+}
+```
+
+##### 对比：预览方案演进
+
+| 维度 | GTCEu BlockPattern | NeoECOAE LDLib2 | Deity 同源双视 |
+|------|-------------------|-----------------|-------------|
+| 数据源 | BlockPattern DSL | 独立 Builder DSL | OracleTemplate（与运行时一致） |
+| 大结构性能 | 差（aisle展开） | 中（Instruction链遍历） | 好（BitSet/OracleTemplate 直接遍历） |
+| 运行一致性 | 弱 | 弱 | **强**（同一数据源） |
+| JEI 集成 | ✅ 内嵌 | ✅ 内嵌（LDLib2 Scene） | ✅ Tier 1 内嵌（LDLib2 Scene） |
+| 详览模式 | 无 | 无 | ✅ Tier 2 四象限蓝图腾 |
+| 视角控制 | 拖拽旋转（JEI内） | 拖拽旋转（JEI内） | **Tier 1 可拖拽 + Tier 2 固定方向** |
+| IO 标记 | 无 | 无 | **图例面板 + 线形/颜色标记**（Tier 2） |
+| 剖面图 | 无 | 按 Y 层切换 | **三视图联动剖面滑块**（Tier 2） |
+| Part 数量限制 | 无 | 无 | **搜索框 + [min, max] 区间**（Tier 2） |
+| 渲染管线 | GTCEu | LDLib2 Scene | LDLib2 Scene（Tier 1同NeoECOAE / Tier 2可接入Veil） |
 
 ---
 
 ## 9. 改动文件清单
 
-### 9.1 Phase 1 — GoblinMultiblockPartMachine（当前可执行）
+### 9.1 Phase 1 — GoblinPartMachine（当前可执行）
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `GoblinMultiblockPartMachine.java` | **新建** | `extends MultiblockPartMachine`，覆写 `getBlockAppearance()` |
-| `TieredPartGoblinMachine.java` | **修改**（改继承为 GoblinMultiblockPartMachine） | ~5 行改动 |
-| `TieredIOPartGoblinMachine.java` | **不修改**（继承链自动变更） | 0 行 |
+| `GoblinPartMachine.java` | **新建** | `extends MultiblockPartMachine`，覆写 `getBlockAppearance()` |
+| `GoblinTieredPartMachine.java` | **修改**（改继承为 GoblinPartMachine） | ~5 行改动 |
+| `GoblinTieredIOPartMachine.java` | **不修改**（继承链自动变更） | 0 行 |
 
 > **不需要**：IGhostMachine、GhostPartHullRender、GhostPartHullRenderType、GhostPartHullModel、transparent.png、GTCEu DynamicRender 注册。
 > **移除现有文件**：`GhostPartHullRender.java`、`GhostPartHullRenderType.java`。
@@ -1310,36 +1931,39 @@ ShamanItem（蓝图腾）创建时：
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `TieredPartGoblinMachine` 改为 Item | **修改** | 不可直接放置，改为交互物品 |
+| `GoblinTieredPartMachine` 改为 Item | **修改** | 不可直接放置，改为交互物品 |
 | `GoblinPartItemHandler.java` | **新建** | 客户端 tick + Outliner 渲染（绑定/放置/共享） |
-| `GoblinPartBindPacket.java` | **新建** | 绑定确认网络包 |
-| `GoblinPartPlacePacket.java` | **新建** | 放置 Part 网络包 |
-| `GoblinPartUnbindPacket.java` | **新建** | 取消绑定网络包 |
+| `GoblinPartInteractPacket.java` | **新建** | Part 交互网络包（绑定/放置/取消统一入口） |
 | `GoblinMultiblockDefinition.java` | **新建** | 蓝图位置定义数据模型 |
 
 ### 9.3 Phase 3 — Controller 改造
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `MultiblockControllerGoblinMachine.java` | **新建** | 继承 MultiblockControllerMachine |
+| `GoblinControllerMachine.java` | **新建** | 继承 MultiblockControllerMachine |
 | override `onLoad()` | 不注册 asyncLogic | 阻止定时结构检查 |
 | override `asyncCheckPattern()` | 空实现 | 双重保险 |
 | override `onUse()` | 不调用 showPreview | 阻止世界内预览 |
 | override `onRotated()` / `setFrontFacing()` | 去掉 checkPattern | 阻止转动触发的检查 |
-| 添加 `getDefinitionData()` | **新增** | 返回结构定义（供 ShamanItem 序列化） |
+| 添加 `getDefinitionData()` | **新增** | 返回结构定义（供 GoblinShamanItem 序列化） |
 
 ### 9.4 Phase 4 — 多方块机器之神（GoblinMachineDeity）
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `IDeityOracle.java` | **新建** | 神谕接口（`onBlockChanged` / `checkFormation` / `queryExpectedPart` / `getCoveredPositions`） |
-| `GoblinMachineDeity.java` | **新建** | 集中式神，以 Controller 为键管理神谕缓存，空间哈希 O(1) 查找 |
+| `IDeityOracle.java` | **新建** | 神谕接口（`markOccupied`/`markVacant`/`checkFormation`/`queryExpectedPart`/`getAvailablePositions`/`exportPreviewBlocks`） |
+| `GoblinMachineDeity.java` | **新建** | 集中式神，玩家命中缓存 + Part 自报位置，无需 `posToControllers` 空间哈希 |
 | `StructureBitmap.java` | **新建** | FIXED 模式神谕，BitSet + byte[] + 计数约束 |
 | `SectionedBitmap.java` | **新建** | SECTIONED 模式，capA + N×middle + capB 动态推断 |
 | `EnclosureValidator.java` | **新建** | ENCLOSURE 模式，缓存 BFS 围合检测 |
 | `PlacementResult.java` | **新建** | 密封接口：Ok / OutOfBounds / TypeMismatch / CountExceeded |
 | `FormationStatus.java` | **新建** | 密封接口：Formed / Incomplete / CountUnderMin |
 | `ExpectedPartQuery.java` | **新建** | 查询期望的 Part 类型（供 Outliner 用） |
+| `MultiBlockJEICategory.java` | **新建** | JEI/EMI 预览 Category（基于 LDLib2 Scene + Oracle 直出） |
+| `MultiBlockPreviewRender.java` | **新建** | 预览渲染桥接（Oracle → TrackedDummyWorld → Scene） |
+| `GoblinMultiblockRegistrate.java` | **新建** | `GTRegistrate.create("goblintech")` + `goblinMultiblock()` 替代 `REGISTRATE.multiblock()`，所有资源路径归属 `goblintech:` 命名空间 |
+| `GoblinMultiblockBuilder.java` | **新建** | Builder 中介，代理 GTCEu Builder + `.verifyMode()` / `.definition()` |
+| `OracleTemplate.java` | **新建** | sealed interface + 三种实现（StructureBitmapTemplate / SectionedBitmapTemplate / EnclosureTemplate） |
 
 #### Sable Companion 兼容
 
@@ -1377,7 +2001,7 @@ public class GoblinMachineDeity {
      * 检查位置是否在某个 Controller 的检测范围内（考虑子世界）
      */
     private boolean isInControllerRange(Level level, BlockPos pos, 
-                                        MultiblockControllerGoblinMachine controller) {
+                                        GoblinControllerMachine controller) {
         // 获取控制器位置的主世界坐标
         Vec3 controllerWorldPos = SableCompanion.INSTANCE.projectOutOfSubLevel(
             level, controller.getPos()
@@ -1394,7 +2018,7 @@ public class GoblinMachineDeity {
     /**
      * 注册 Controller（处理子世界情况）
      */
-    public void registerController(MultiblockControllerGoblinMachine controller) {
+    public void registerController(GoblinControllerMachine controller) {
         Level level = controller.getLevel();
         
         // 获取控制器所在的子世界（如果有的话）
@@ -1485,20 +2109,30 @@ dependencies {
 | `multiblockAnnoyanceInterval` | int | 20 | 触发间隔阈值（tick，20 tick = 1 秒） |
 | `multiblockAnnoyanceCooldown` | int | 60 | 厌弃冷却时间（秒） |
 
-### 9.5 Phase 5 — ShamanItem（蓝图腾）
+### 9.5 Phase 5 — GoblinShamanItem（蓝图腾）
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `ShamanItem.java` | **新建** | `extends SchematicItem`，S-h-a-m-a-n / S-c-h-e-m-a-t-i-c 谐音梗 |
-| `ShamanItemHandler.java` | **新建** | 客户端预览 Handler（扩展 SchematicHandler） |
+| `GoblinShamanItem.java` | **新建** | `extends SchematicItem`，S-h-a-m-a-n / S-c-h-e-m-a-t-i-c 谐音梗 |
+| `GoblinShamanItemHandler.java` | **新建** | 客户端预览 Handler（扩展 SchematicHandler） |
 | `ShamanTool.java` | **新建** | 自定义第二排工具（分层/变体/重复） |
 | `ShamanDataComponent.java` | **新建** | 存储 Controller 定义引用 |
+| `GoblinScripture.java` | **修改** | 新增 `consumeInputs` 字段 + `fromOracleTemplate()` 工厂方法 |
+| `RecipeMode.java` | **修改** | 新增 `TRANSFER` 枚举值（供奉展示型） |
 
-### 9.6 Phase 6 — WorkableTieredGoblinMachine
+### 9.6 Phase 6 — GoblinWorkableMachine
 
 | 文件 | 操作 |
 |------|------|
-| `WorkableTieredGoblinMachine.java` | **新建**，`extends MetaMachine implements IGoblinRecipeLogicMachine` |
+| `GoblinWorkableMachine.java` | **新建**，`extends MetaMachine implements IBelieverOfScripture` |
+
+### 9.7 Phase 7 — GoblinMachineDeityShaman（仪式锻造机）
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `GoblinMachineDeityShaman.java` | **新建** | GTM 单方块机器，供奉材料 → 产出蓝图。通过 GoblinScripture.consumeInputs=false 实现不消耗 |
+| `ShamanRitualRenderer.java` | **新建** | 仪式粒子动画（图腾柱粒子 + 音效） |
+| `ShamanRitualRecipeType.java` | **新建** | 仪式配方类型 |
 
 ---
 
@@ -1508,34 +2142,26 @@ dependencies {
 
 Part（伪装+多方块）、单方块（多供能）、Controller（阻止老逻辑）三个方向需求正交，无共同中介层可抽取。各自直接从 GTCEu 基类继承更干净。
 
-### 10.2 为什么 GoblinMultiblockPartMachine 继承 MultiblockPartMachine
+### 10.2 为什么 GoblinPartMachine 继承 MultiblockPartMachine
 
 GTCEu 的 `MultiblockPartMachine` 168 行代码零 `final` 方法、零 `final` 类，完全可继承。直接继承免去搬运 5 大功能模块的维护成本。
 
-### 10.3 为什么 MultiblockControllerGoblinMachine 继承 MultiblockControllerMachine
+### 10.3 为什么 GoblinControllerMachine 继承 MultiblockControllerMachine
 
 GTCEu 内部有 47 处 `instanceof MultiblockControllerMachine` 检查（BlockPattern、RecipeLogic、GTRecipeModifiers、Jade 等）。不继承则多方块成型、配方处理、Jade 显示全部崩溃。
 
-### 10.4 为什么 DynamicRender 泛型用 IGhostMachine 而非具体类
+### 10.4 为什么 GoblinTieredPartMachine 不是方块而是物品
 
-`IGhostMachine` 是接口，任何实现它的机器类（不仅是 `GoblinMultiblockPartMachine`）都能自动获得幽灵外壳渲染能力。
+GoblinTieredPartMachine 是一个"幽灵 Part"——它只有在放置到 Controller 蓝图定义的位置后才能变成方块。单独存在时只是物品。这与 Create 蓝图系统的"先定义结构再放置"理念一致，也与 Cover 操作类似但不是在可放置 Cover 的方块上进行。
 
-### 10.5 为什么 GhostPartHullRender 不偏移 quad
-
-底座模型已被 `textureOverrides` 替换为透明，覆盖层无需内偏移防 z-fighting。`GhostPartHullRender` 直接在方块空间渲染目标模型即可。
-
-### 10.6 为什么 TieredPartGoblinMachine 不是方块而是物品
-
-TieredPartGoblinMachine 是一个"幽灵 Part"——它只有在放置到 Controller 蓝图定义的位置后才能变成方块。单独存在时只是物品。这与 Create 蓝图系统的"先定义结构再放置"理念一致，也与 Cover 操作类似但不是在可放置 Cover 的方块上进行。
-
-### 10.7 为什么复用 Create 蓝图系统而非自建
+### 10.5 为什么复用 Create 蓝图系统而非自建
 
 - **免去适配工作**：Create 蓝图已有完整的客户端预览（SchematicHandler + SchematicRenderer）、蓝图大炮搭建（Schematicannon）、序列化（StructureTemplate）、变换系统（SchematicTransformation）
 - **原生支持动画**：蓝图大炮搭建有完整的粒子+音效动画
 - **原生支持移动/旋转/翻转**：这些是 Create 蓝图工具的标配功能
 - **天然兼容**：作为 Create 附属 mod，无需额外添加依赖
 
-### 10.8 为什么采用集中式神谕（GoblinMachineDeity）设计
+### 10.6 为什么采用集中式神谕（GoblinMachineDeity）设计
 
 | 方案 | 问题 | 后果 |
 |------|------|------|
@@ -1549,7 +2175,7 @@ TieredPartGoblinMachine 是一个"幽灵 Part"——它只有在放置到 Contro
 - **统一状态缓存**：所有机器的成型状态由神统一管理
 - **易于扩展**：新增神谕模式只需实现 `IDeityOracle` 接口
 
-### 10.9 三种神谕模式的适用场景
+### 10.7 三种神谕模式的适用场景
 
 #### FIXED（固定形状）
 - **适用**：结构固定、不可扩展的机器（如基础机器、特定配方机器）
@@ -1566,7 +2192,7 @@ TieredPartGoblinMachine 是一个"幽灵 Part"——它只有在放置到 Contro
 - **特点**：事件驱动 + 缓存 BFS，验证封闭空间
 - **示例**：需要封闭环境的特殊加工室
 
-### 10.10 性能优化考虑
+### 10.8 性能优化考虑
 
 | 优化点 | 实现方式 | 收益 |
 |--------|---------|------|
@@ -1576,7 +2202,7 @@ TieredPartGoblinMachine 是一个"幽灵 Part"——它只有在放置到 Contro
 | 事件驱动 | 仅在方块变更时触发检查 | 消除定时轮询开销 |
 | FastUtil 集合 | `LongOpenHashSet`、`Long2ObjectOpenHashMap` | 避免装箱，提升缓存友好性 |
 
-### 10.11 与 GTCEu 原生多方块系统的对比
+### 10.9 与 GTCEu 原生多方块系统的对比
 
 | 维度 | GTCEu 原生 | GoblinMachineDeity |
 |------|-----------|-------------------|
@@ -1588,7 +2214,7 @@ TieredPartGoblinMachine 是一个"幽灵 Part"——它只有在放置到 Contro
 | **错误提示** | 仅支持 JEI 预览 | 支持实时 Outliner 标记 |
 | **扩展性** | 固定模式 | 可扩展神谕模式 |
 
-### 10.12 三种神谕模式的实现细节
+### 10.10 三种神谕模式的实现细节
 
 #### StructureBitmap（FIXED 模式）
 
@@ -1706,14 +2332,14 @@ public class EnclosureValidator implements IDeityOracle {
 }
 ```
 
-### 10.13 为什么放弃 DynamicRender 方案改用 getBlockAppearance()
+### 10.11 为什么放弃 DynamicRender 方案改用 getBlockAppearance()
 
 | 维度 | DynamicRender 方案 | getBlockAppearance() 方案 |
 |------|-------------------|--------------------------|
 | 新增类 | IGhostMachine + Render + RenderType + Model + transparent.png ≈ 5 个 | **0 个** |
 | 渲染方式 | 底座透明 + DynamicRender 接管 | Minecraft 原生渲染 |
 | CTM | 需要在 getRenderQuads 中手动获取 CTM model | 原生支持（通过 getAppearance 查询链） |
-| 方块属性 (FACING等) | 需在 DynamicRender 中手动处理 | 自动支持（渲染完整 BlockState） |
+| 方块属性 (FACING等) | 需在 DynamicRender 中手动处理 | 直接存绝对 BlockState，扳手旋转不变，蓝图旋转由结构系统处理（见 §4.3） |
 | 破坏动画 | 需额外同步逻辑 | 自动显示伪装方块的破坏动画 |
 | 注册需求 | 需在 GTCEu CommonProxy 注册 DynamicRenderType | 无需任何注册 |
 | 端口(port)显示 | 需额外叠加层渲染 | 保留 GTCEu 默认端口渲染 |
@@ -1731,10 +2357,10 @@ public class EnclosureValidator implements IDeityOracle {
 | 文件 | 说明 |
 |------|------|
 | **多方块系统** | |
-| `src/main/java/com/goblincoders/goblintech/api/machine/multiblock/part/GoblinMultiblockPartMachine.java` | Part 基类（★ 覆写 `getBlockAppearance()` 实现伪装） |
-| `src/main/java/com/goblincoders/goblintech/api/machine/multiblock/part/TieredPartGoblinMachine.java` | 分级 Part |
-| `src/main/java/com/goblincoders/goblintech/api/machine/multiblock/part/TieredIOPartGoblinMachine.java` | IO Part |
-| `src/main/java/com/goblincoders/goblintech/api/machine/multiblock/MultiblockControllerGoblinMachine.java` | Controller 基类 |
+| `src/main/java/com/goblincoders/goblintech/api/machine/multiblock/part/GoblinPartMachine.java` | Part 基类（★ 覆写 `getBlockAppearance()` 实现伪装） |
+| `src/main/java/com/goblincoders/goblintech/api/machine/multiblock/part/GoblinTieredPartMachine.java` | 分级 Part |
+| `src/main/java/com/goblincoders/goblintech/api/machine/multiblock/part/GoblinTieredIOPartMachine.java` | IO Part |
+| `src/main/java/com/goblincoders/goblintech/api/machine/multiblock/GoblinControllerMachine.java` | Controller 基类 |
 | **神谕系统（Phase 4 新增）** | |
 | `src/main/java/com/goblincoders/goblintech/api/machine/deity/GoblinMachineDeity.java` | 多方块机器之神（集中式验证引擎） |
 | `src/main/java/com/goblincoders/goblintech/api/machine/deity/IDeityOracle.java` | 神谕接口 |
@@ -1744,7 +2370,7 @@ public class EnclosureValidator implements IDeityOracle {
 | `src/main/java/com/goblincoders/goblintech/api/machine/deity/FormationStatus.java` | 成型状态枚举 |
 | `src/main/java/com/goblincoders/goblintech/api/machine/deity/ExpectedPartQuery.java` | 期望 Part 查询结果 |
 | **蓝图腾系统** | |
-| `src/main/java/com/goblincoders/goblintech/api/item/ShamanItem.java` | 蓝图腾物品（谐音 Create Schematic） |
+| `src/main/java/com/goblincoders/goblintech/api/item/GoblinShamanItem.java` | 蓝图腾物品（谐音 Create Schematic） |
 | **其他** | |
 | `src/main/java/com/goblincoders/goblintech/GoblinTech.java` | Mod 入口 |
 
@@ -1754,8 +2380,8 @@ public class EnclosureValidator implements IDeityOracle {
 
 | 文件 | 说明 |
 |------|------|
-| `src/main/java/com/gregtechceu/gtceu/api/machine/multiblock/part/MultiblockPartMachine.java` | GTCEu Part 基类（GoblinMultiblockPartMachine 的继承源） |
-| `src/main/java/com/gregtechceu/gtceu/api/machine/multiblock/MultiblockControllerMachine.java` | GTCEu Controller 基类（MultiblockControllerGoblinMachine 的继承源） |
+| `src/main/java/com/gregtechceu/gtceu/api/machine/multiblock/part/MultiblockPartMachine.java` | GTCEu Part 基类（GoblinPartMachine 的继承源） |
+| `src/main/java/com/gregtechceu/gtceu/api/machine/multiblock/MultiblockControllerMachine.java` | GTCEu Controller 基类（GoblinControllerMachine 的继承源） |
 | `src/main/java/com/gregtechceu/gtceu/client/renderer/machine/DynamicRender.java` | GTCEu 动态渲染基类 |
 | `src/main/java/com/gregtechceu/gtceu/client/model/machine/MachineModel.java` | GTCEu 机器模型渲染管线 |
 
@@ -1763,7 +2389,7 @@ public class EnclosureValidator implements IDeityOracle {
 
 | 文件 | 说明 |
 |------|------|
-| `Create-mc1.21.1-6.0.10/.../schematics/SchematicItem.java` | 蓝图物品（ShamanItem 的继承目标，S-h-a-m-a-n / S-c-h-e-m-a-t-i-c 谐音梗） |
+| `Create-mc1.21.1-6.0.10/.../schematics/SchematicItem.java` | 蓝图物品（GoblinShamanItem 的继承目标，S-h-a-m-a-n / S-c-h-e-m-a-t-i-c 谐音梗） |
 | `Create-mc1.21.1-6.0.10/.../schematics/client/SchematicHandler.java` | 蓝图客户端 Handler |
 | `Create-mc1.21.1-6.0.10/.../schematics/client/SchematicTransformation.java` | 蓝图变换系统 |
 | `Create-mc1.21.1-6.0.10/.../schematics/client/SchematicRenderer.java` | 蓝图 3D 渲染 |
