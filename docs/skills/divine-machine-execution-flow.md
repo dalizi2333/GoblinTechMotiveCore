@@ -138,8 +138,9 @@ flowchart TB
         APPLY_AUGURS --> CHECK_PURGE
     end
 
-    subgraph PURGE_PHASE["排放态 (PURGE)"]
-        PURGE --> POUR["pourSanctifiedBlessing()<br/>blessingYield = 0<br/>blessingPoured 计算<br/>blessingStock -= blessingPoured"]
+    subgraph PURGE_PHASE["排放态 (PURGE) — 不 Offering，全力 Blessing"]
+        PURGE --> EVAL["evaluateDivineBlessing()<br/>offeringRate = 0<br/>→ aggregateMaxBlessing()"]
+        EVAL --> POUR["pourSanctifiedBlessing()<br/>→ batchBless()<br/>blessingStock -= blessingPoured"]
         POUR --> CALL_IO["调用 IBelieverOfScripture<br/>每 tick 输出管理器"]
         CALL_IO --> CHECK_PURGE
     end
@@ -228,7 +229,7 @@ flowchart TD
         S2a{"machine instanceof<br/>IAscensionBlessed?"}
         S2a -->|"否"| S2_id["IDENTITY"]
         S2a -->|"是"| S2b["postParallelDemand = CAP.extractDemand()<br/>avatarCount = recipe.parallels<br/>unitDemand = postParallelDemand / avatarCount"]
-        S2b --> S2c["scriptureRank = floor(log4(unitDemand / 8))<br/>devotionGrade = blessed.getDevotionGrade()<br/>maxBosom = blessed.getOfferingBlessingManager()<br/>.aggregateMaxBosom()<br/>ascendTimes = floor(log4(maxBosom / postParallelDemand))"]
+        S2b --> S2c["scriptureRank = floor(log4(unitDemand / 8))<br/>devotionGrade = blessed.getDevotionGrade()<br/>maxOffering = ScriptureAptitude.CAP<br/>.getMaxOffering(machine)<br/>ascendTimes = floor(log4(maxOffering / postParallelDemand))"]
         S2c --> S2d1{"scriptureRank > devotionGrade?"}
         S2d1 -->|"是"| S2_reject1["ModifierFunction.NULL<br/>rank_exceeds_devotion"]
         S2d1 -->|"否"| S2d2{"ascendTimes?"}
@@ -301,12 +302,12 @@ flowchart TB
         CC1 --> CC2["floor(输入流体总量 / 每配方消耗)"]
         
         AA --> DD["maxByOffering"]
-        DD --> DD1["OfferingBlessingManager.aggregateMaxBosom()"]
-        DD1 --> DD2["floor(maxBosom / offeringDemand)"]
+        DD --> DD1["OfferingBlessingManager.aggregateMaxOffering()"]
+        DD1 --> DD2["floor(maxOffering / offeringDemand)"]
         
         AA --> EE["maxByBlessing"]
-        EE --> EE1["OfferingBlessingManager.aggregateMaxEndurance()"]
-        EE1 --> EE2["floor(maxEndurance / blessingYield)"]
+        EE --> EE1["OfferingBlessingManager.aggregateMaxBlessing()"]
+        EE1 --> EE2["floor(maxBlessing / blessingYield)"]
         
         BB2 --> FF["min(所有限制)"]
         CC2 --> FF
@@ -328,16 +329,16 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    A[OfferingBlessingManager.aggregateMaxBosom] --> B[遍历所有已安装的 IOfferingModule]
-    B --> C[每个模块调用 getMaxBosom]
+    A[OfferingBlessingManager.aggregateMaxOffering] --> B[遍历所有已安装的 IOfferingModule]
+    B --> C[每个模块调用 getMaxOffering]
     
     subgraph THUNDER["电力献祭模块流程"]
-        T1[ThunderOfferingModule.getMaxBosom] --> T2[遍历所有 Runic 模块]
+        T1[ThunderOfferingModule.getMaxOffering] --> T2[遍历所有 Runic 模块]
         
         subgraph RUNIC["单个 Runic 计算"]
-            R1["基础 Bosom = V(devotionGrade)"]
+            R1["基础 Offering = V(devotionGrade)"]
             R2["节点倍率 = commonNodes + 2*sanctifiedNodes"]
-            R3["Runic Bosom = 基础 * 节点倍率"]
+            R3["Runic Offering = 基础 * 节点倍率"]
         end
         
         T2 --> R1
@@ -345,37 +346,37 @@ flowchart TD
         R2 --> R3
         
         R3 --> T3{"Runic 数量 > 1?"}
-        T3 -->|"是"| T4["总 Bosom = (sum 各 Runic Bosom) * 2"]
-        T3 -->|"否"| T5["总 Bosom = 该 Runic Bosom"]
-        T4 --> T6[返回总 Bosom]
+        T3 -->|"是"| T4["总 Offering = (sum 各 Runic Offering) * 2"]
+        T3 -->|"否"| T5["总 Offering = 该 Runic Offering"]
+        T4 --> T6[返回总 Offering]
         T5 --> T6
     end
     
     C --> T1
-    T6 --> D[累加所有模块 bosom]
+    T6 --> D[累加所有模块 offering]
     
     subgraph KINETIC["应力献祭模块流程"]
-        K1[KineticOfferingModule.getMaxBosom] --> K2[遍历所有应力输入模块]
-        K2 --> K3["每个模块 Bosom = V(devotionGrade)"]
-        K3 --> K4["总 Bosom = sum(各模块 Bosom)"]
-        K4 --> K5[返回总 Bosom]
+        K1[KineticOfferingModule.getMaxOffering] --> K2[遍历所有应力输入模块]
+        K2 --> K3["每个模块 Offering = V(devotionGrade)"]
+        K3 --> K4["总 Offering = sum(各模块 Offering)"]
+        K4 --> K5[返回总 Offering]
     end
     
     C --> K1
     K5 --> D
     
     subgraph MEDIUM["介质献祭模块流程"]
-        M1[MediumOfferingModule.getMaxBosom] --> M2[遍历所有介质输入模块]
+        M1[MediumOfferingModule.getMaxOffering] --> M2[遍历所有介质输入模块]
         M2 --> M3{"所有模块 mediumType 一致?"}
         M3 -->|"否"| M4["返回 0（类型冲突）"]
         M3 -->|"是"| M5[遍历各模块做 IO 检查]
         
         subgraph M_CHECK["单个介质模块检查"]
-            MC1["获取固定 Bosom 和 devotionGrade"]
+            MC1["获取固定 Offering 和 devotionGrade"]
             MC2{"输入槽有足够介质?"}
             MC3{"输出槽有足够空间?"}
-            MC4["Bosom = 固定值"]
-            MC5["Bosom = 0"]
+            MC4["Offering = 固定值"]
+            MC5["Offering = 0"]
             
             MC1 --> MC2
             MC2 -->|"是"| MC3
@@ -385,9 +386,9 @@ flowchart TD
         end
         
         M5 --> MC1
-        MC4 --> M6["总 Bosom += Bosom"]
+        MC4 --> M6["总 Offering += Offering"]
         MC5 --> M6
-        M6 --> M7[返回总 Bosom]
+        M6 --> M7[返回总 Offering]
     end
     
     C --> M1
@@ -395,7 +396,7 @@ flowchart TD
     M7 --> D
     
     subgraph FUEL["燃料献祭模块流程"]
-        F1[FuelOfferingModule.getMaxBosom] --> F1a{"同类型燃料模块<br/>重复安装?"}
+        F1[FuelOfferingModule.getMaxOffering] --> F1a{"同类型燃料模块<br/>重复安装?"}
         F1a -->|"是"| F1b["返回 0<br/>类型冲突"]
         F1a -->|"否"| F2[遍历所有燃料输入模块]
         
@@ -408,11 +409,11 @@ flowchart TD
         end
         
         F2 --> FC1
-        FC2 --> F3["总 Bosom += Offering"]
+        FC2 --> F3["总 Offering += Offering"]
         FC4 --> F3
         FC5 --> F3
-        F1b --> F4[返回总 Bosom]
-        F3 --> F4[返回总 Bosom]
+        F1b --> F4[返回总 Offering]
+        F3 --> F4[返回总 Offering]
     end
     
     C --> F1
@@ -448,7 +449,7 @@ flowchart TD
 
 **示例：**
 
-| 配置 | 总 devotionGrade | ThunderOfferingModule.getMaxBosom |
+| 配置 | 总 devotionGrade | ThunderOfferingModule.getMaxOffering |
 |------|-----------------|--------------------------------------|
 | LV 单 Runic + 1 commonNode | LV (1) | 32 × 1 = 32 |
 | LV 单 Runic + 1 sanctifiedNode | LV (1) | 32 × 2 = 64 |
@@ -473,17 +474,17 @@ flowchart TD
 
 2. **互斥规则**（双层防护）：
    - **安装时**：检查机器是否已安装其他 `mediumType` 的介质输入模块，若已安装则禁止安装
-   - **运行时**：`getMaxBosom()` 先检查所有已安装介质输入模块的 `mediumType` 是否一致，若不一致则直接返回 0（全部失效）
+   - **运行时**：`getMaxOffering()` 先检查所有已安装介质输入模块的 `mediumType` 是否一致，若不一致则直接返回 0（全部失效）
 
 3. **模块安装时**：同时注册对应的介质输入/输出 IO 槽
 
-4. **单个介质输入模块的有效 Bosom**：
+4. **单个介质输入模块的有效 Offering**：
    - 输入槽有足够一 tick 消耗的介质
    - 输出槽有足够一 tick 输出的空间
-   - 两者都满足：Bosom = 固定值
-   - 任一不满足：Bosom = 0
+   - 两者都满足：Offering = 固定值
+   - 任一不满足：Offering = 0
 
-5. **介质献祭模块总 Bosom** = sum(所有模块的 Bosom)<br/>（类型冲突时直接返回 0，无效模块返回 0 参与求和）
+5. **介质献祭模块总 Offering** = sum(所有模块的 Offering)<br/>（类型冲突时直接返回 0，无效模块返回 0 参与求和）
 
 6. **介质献祭模块的 devotionGrade** = 各介质输入模块的 devotionGrade 中的最大值
 
@@ -524,7 +525,7 @@ flowchart TD
    - `tickOffering()`：每 tick 调用，`remainingBurnTicks > 0` 时递减并返回 `currentOfferingPerTick`
    - 燃烧结束后：清除状态（`activeRecipe = null`），等待下次 `ignite()`
 
-4. **Bosom 计算规则**（`FuelOfferingModule.getMaxBosom()`）：
+4. **Offering 计算规则**（`FuelOfferingModule.getMaxOffering()`）：
    - **互斥规则**：检查所有已安装的燃料输入模块是否有同类型（`fuelRecipeType`）重复安装，若有则直接返回 0（类型冲突）
    - 正在燃烧：直接返回 `currentOfferingPerTick`
    - 未燃烧时调用 `simulateMatch()`：
@@ -550,7 +551,7 @@ flowchart TD
     A[AscensionBenediction.getModifier] --> B{"machine instanceof IAscensionBlessed?"}
     B -->|"否"| C[IDENTITY]
     B -->|"是"| D["postParallelDemand = CAP.extractDemand()<br/>avatarCount = recipe.parallels<br/>unitDemand = postParallelDemand / avatarCount"]
-    D --> E["scriptureRank = floor(log4(unitDemand / 8))<br/>devotionGrade = blessed.getDevotionGrade()<br/>maxBosom = blessed.getOfferingBlessingManager()<br/>.aggregateMaxBosom()<br/>ascendTimes = floor(log4(maxBosom / postParallelDemand))"]
+    D --> E["scriptureRank = floor(log4(unitDemand / 8))<br/>devotionGrade = blessed.getDevotionGrade()<br/>maxOffering = ScriptureAptitude.CAP<br/>.getMaxOffering(machine)<br/>ascendTimes = floor(log4(maxOffering / postParallelDemand))"]
     E --> F{"scriptureRank > devotionGrade?"}
     F -->|"是"| G[ModifierFunction.NULL<br/>rank_exceeds_devotion]
     F -->|"否"| H{"ascendTimes?"}
@@ -573,16 +574,16 @@ flowchart TD
 - `devotionGrade` 是机器的**固定基础等级**（如 LV=1、MV=2、HV=3），**不受增益影响**。
 - 由 `IAscensionBlessed.getDevotionGrade()` 直接返回。
 
-**maxBosom 说明：**
-- `maxBosom` 是机器的**实际祭品上限**（基础上限 × 增益）。
-- 由 `OfferingBlessingManager.aggregateMaxBosom()` 计算返回（通过 `IAscensionBlessed.getOfferingBlessingManager()` 获取）。
+**maxOffering 说明：**
+- `maxOffering` 是机器的**实际祭品上限**（基础上限 × 增益）。
+- 由 `ScriptureAptitude.CAP.getMaxOffering(machine)` 计算返回（内部调用 `OfferingBlessingManager.aggregateMaxOffering()`）。
 
 **升腾参数计算公式：**
 
 | 参数 | 公式 |
 |------|------|
 | 经文位阶 | `scriptureRank = floor(log4(unitDemand / 8))` |
-| 升腾次数 | `ascendTimes = floor(log4(maxBosom / postParallelDemand))` |
+| 升腾次数 | `ascendTimes = floor(log4(maxOffering / postParallelDemand))` |
 | 有效升腾次数 | `appliedAscensions`：升腾循环中逐次判断 `duration × 0.5 ≥ 1` 的次数 |
 | 溢出次数 | `subtickOverflow = ascendTimes - appliedAscensions`：因 duration 将低于 1 而转入 subtick 的剩余次数 |
 | 每单位需求（升腾后） | `demand ×= 4^appliedAscensions` |
@@ -722,7 +723,7 @@ public interface IAscensionBlessed extends IMachineFeature {
     int getDevotionGrade();
 
     /**
-     * @return 祭品祝福管理器，供 ASCENSION_BENEDICTION 调用 aggregateMaxBosom() 等
+     * @return 祭品祝福管理器，供 ASCENSION_BENEDICTION 调用 aggregateMaxOffering() 等
      */
     OfferingBlessingManager getOfferingBlessingManager();
 }
@@ -1133,9 +1134,9 @@ flowchart TB
    - **不消耗燃料**
    - 返回 `SimulateResult`（offeringPerTick、配方引用、是否成功）
 
-3. **Bosom 聚合**：
-   - 所有燃料输入模块返回的 offering 累加到总 Bosom 中
-   - 结合其他献祭模块（电力/应力/介质）的 Bosom，形成最终的 `maxBosom`
+3. **Offering 聚合**：
+   - 所有燃料输入模块返回的 offering 累加到总 Offering 中
+   - 结合其他献祭模块（电力/应力/介质）的 Offering，形成最终的 `maxOffering`
 
 #### `performDivineWork()` 阶段 — 实际点燃
 
@@ -1236,18 +1237,22 @@ public void completeScriptureRite() {
 
 配方完成后若 `blessingStock > 0`（祝福未排空），进入排放态逐 tick 倾倒。
 
+PURGE 态的核心逻辑：**不 Offering，全力 Blessing**。管线与 `assessBelieverState` 高度相似，但 `offeringRate` 固定为 0，完全不受 Offering 影响。
+
 ```mermaid
 flowchart TB
     E1{blessingStock > 0?} -->|否| E2[返回IDLE]
     E1 -->|是| E3[进入排放态]
-    
-    E3 --> E4[blessingYield = 0]
-    E4 --> E5[blessingPoured]
-    E5 --> E6[blessingStock -=]
-    E6 --> E7[handleTickRecipeIO OUT]
-    E7 --> E8{blessingStock > 0?}
-    E8 -->|是| E5
-    E8 -->|否| E9[返回IDLE]
+
+    E3 --> E4["offeringRate = 0<br/>（不 Offering，不受 Offering 影响）"]
+    E4 --> E5["evaluateDivineBlessing()<br/>→ aggregateMaxBlessing()"]
+    E5 --> E6["blessingRate = min(1.0f, maxBlessing / blessingStock)"]
+    E6 --> E7["pourSanctifiedBlessing()<br/>→ batchBless()"]
+    E7 --> E8["blessingStock -= blessingPoured"]
+    E8 --> E9["handleTickRecipeIO OUT"]
+    E9 --> E10{blessingStock > 0?}
+    E10 -->|是| E5
+    E10 -->|否| E11[返回IDLE]
 ```
 
 ---
@@ -1361,8 +1366,8 @@ public class DivineRecipeModifiers {
                 Component.translatable("divine.recipe_modifier.recipe_tier_too_high"));
         }
 
-        long maxBosom = blessed.getOfferingBlessingManager().aggregateMaxBosom();
-        int ascendTimes = (int) (Math.floor(Math.log(maxBosom / (double) postParallelDemand) / Math.log(4)));
+        long maxOffering = ScriptureAptitude.CAP.getMaxOffering(machine).value();
+        int ascendTimes = (int) (Math.floor(Math.log(maxOffering / (double) postParallelDemand) / Math.log(4)));
 
         // 第2道拦截：祭品不够
         if (ascendTimes < 0) {
@@ -1478,11 +1483,11 @@ public class DivineRecipeModifiers {
      * GoblinOracleOfOmnipresence.getOmnipresentAvatarCount() 内部调用流程：
      *
      * maxByInput  → ScriptureAptitude.CAP.getMaxParallelByInput(holder, recipe, limit, tick)
-     *   ├─ tick=true:  floor(maxBosom / offeringDemand)
+     *   ├─ tick=true:  floor(maxOffering / offeringDemand)
      *   └─ tick=false: limit (不做限制)
      *
      * maxByOutput → ScriptureAptitude.CAP.limitMaxParallelByOutput(holder, recipe, limit, tick)
-     *   ├─ tick=true:  floor(maxEndurance / blessingYield)
+     *   ├─ tick=true:  floor(maxBlessing / blessingYield)
      *   └─ tick=false: limit (不做限制)
      *
      * 最终总 demand = perUnitDemand × avatarCount × 4^oc
@@ -1645,8 +1650,8 @@ public interface Augur {
 | 配方匹配守卫 | `IBelieverOfScripture.isAwakened()` | IBelieverOfScripture.java |
 | 遍在化现接口 | `IOmnipresentAvatar.getOmnipresentAvatarLimit()` | IOmnipresentAvatar.java |
 | 升腾祝福接口 | `IAscensionBlessed.getDevotionGrade()` `IAscensionBlessed.getOfferingBlessingManager()` | IAscensionBlessed.java |
-| 祭品聚合 | `OfferingBlessingManager.aggregateMaxBosom()` `OfferingBlessingManager.aggregateOfferingContribution()` | OfferingBlessingManager.java |
-| 祝福聚合 | `OfferingBlessingManager.aggregateMaxEndurance()` `OfferingBlessingManager.aggregateBlessingYield()` | OfferingBlessingManager.java |
+| 祭品聚合 | `OfferingBlessingManager.aggregateMaxOffering()` `OfferingBlessingManager.aggregateOfferingContribution()` | OfferingBlessingManager.java |
+| 祝福聚合 | `OfferingBlessingManager.aggregateMaxBlessing()` | OfferingBlessingManager.java |
 | 祭品并行限制 | `ScriptureAptitude.CAP.getMaxParallelByInput()` | `ScriptureAptitude.java` |
 | 祝福并行限制 | `ScriptureAptitude.CAP.limitMaxParallelByOutput()` | `ScriptureAptitude.java` |
 | 遍在化现烘焙 | `DivineRecipeModifiers.OMNIPRESENT_ASCENSION` | `DivineRecipeModifiers.java` |
@@ -1905,7 +1910,7 @@ protected void maintainOracleSubscription() {
 
 ```java
 protected void enterBlessingPurgeIfNeeded() {
-    if (believer().getOfferingStock() > 0) {
+    if (believer().getBlessingStock() > 0) {
         enterPurgingStatus();
     } else {
         setStatus(Status.IDLE);
@@ -1913,19 +1918,21 @@ protected void enterBlessingPurgeIfNeeded() {
 }
 ```
 
-**PURGE 态执行体：**
+**PURGE 态执行体（不 Offering，全力 Blessing）：**
 
 ```java
 protected void conductBlessingPurge() {
-    var result = pourSanctifiedBlessing();
+    // offeringRate 固定为 0，不受 Offering 影响
+    float blessingRate = evaluateDivineBlessing();  // → aggregateMaxBlessing() → batchBless()
+    
+    var result = pourSanctifiedBlessing(blessingRate);
     if (!result.isSuccess()) {
-        setStatus(Status.WAITING);  // 此处会走到覆写的 setStatus()
+        setStatus(Status.WAITING);
         return;
     }
 
     if (hasRemainingBlessing()) {
         scriptureStatus = ScriptureStatus.PURGE;
-        // 父类保持 IDLE 不变
     } else {
         resetAfterBlessingPurge();
         setStatus(Status.IDLE);
@@ -1933,11 +1940,13 @@ protected void conductBlessingPurge() {
 }
 ```
 
-**排放方法**（由 `IBelieverOfScripture` 具体机器实现）：
+**排放方法**（由 `IBelieverOfScripture` 具体机器实现，接收 blessingRate 全功率排放）：
 
 ```java
-protected ActionResult pourSanctifiedBlessing() {
-    return believer().pourSanctifiedBlessing();
+protected ActionResult pourSanctifiedBlessing(float blessingRate) {
+    // 通过 OfferingBlessingManager 设置节流阀并执行 batchBless()
+    believer().getOfferingBlessingManager().setBlessingThrottle(blessingRate);
+    return believer().getOfferingBlessingManager().batchBless();
 }
 ```
 
@@ -1949,7 +1958,7 @@ protected ActionResult pourSanctifiedBlessing() {
 | `interruptScripture()` | 中断后如果有残留祝福，调用 `enterPurgingStatus()`，但不执行正常完成输出 |
 | `findAndHandleRecipe()` | 可包装为 `seekAndInterpretScripture()` |
 | `handleRecipeWorking()` | 可包装为 `performScriptureRite()` |
-| `pourSanctifiedBlessing()` | 新增，对应排放态的执行体 |
+| `pourSanctifiedBlessing(blessingRate)` | 新增，接收 blessingRate 全功率排放，通过 Manager 执行 batchBless() |
 
 ### 9.7 订阅管理注意事项
 

@@ -20,7 +20,7 @@ createdieselgenerators = "1.21.1-1.3.12"
 createtweakedcontrollers = "1.21.1-1.2.7"
 rpl = "2.1.2+mc.1.21.1-neoforge-build.199"
 createpropulsionsimulated = "hTnJ29I0"
-electroenergetics = "autobuild-96"  # 由 scripts/update_electroenergetics.py 自动更新
+electroenergetics = "8174869"  # CurseForge 正式版 1.0.0
 patchouli = "1.21.1-93-NEOFORGE"
 tfc = "4.1.2"
 firmalife = "3.0.9"
@@ -180,6 +180,7 @@ cc-tweaked-forge-impl = { module = "cc.tweaked:cc-tweaked-1.21.1-forge", version
 journeymap-forge    = { module = "maven.modrinth:journeymap", version.ref = "journeyMap" }
 javd                = { module = "curse.maven:javd-370890", version.ref = "javd" }
 trenzalore          = { module = "curse.maven:trenzalore-870210", version.ref = "trenzalore" }
+electroenergetics   = { module = "curse.maven:create-electro-energetics-1443327", version.ref = "electroenergetics" }
 
 [bundles]
 jei = ["jei-common-api", "jei-neoforge-api", "jei-neoforge-impl"]

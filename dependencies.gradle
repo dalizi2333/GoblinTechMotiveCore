@@ -51,7 +51,7 @@ dependencies {
     compileOnly(forge.createdieselgenerators)
     compileOnly(forge.createtweakedcontrollers)
     compileOnly(forge.createpropulsionsimulated)
-    compileOnly(':electroenergetics-latest:')
+    compileOnly(forge.electroenergetics)
 
     // TFC 附属核心依赖
     compileOnly(forge.patchouli)
@@ -126,7 +126,7 @@ dependencies {
     localRuntime(forge.createdieselgenerators)
     localRuntime(forge.createtweakedcontrollers)
     localRuntime(forge.createpropulsionsimulated)
-    localRuntime(':electroenergetics-latest:')
+    localRuntime(forge.electroenergetics)
 
     // TFC 附属核心依赖
     localRuntime(forge.patchouli)

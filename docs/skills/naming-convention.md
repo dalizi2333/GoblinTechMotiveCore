@@ -57,6 +57,31 @@
 | 结构验证 | `GoblinOracleOfStructure` | `IBelieverOfStructure` | `IDivineDecreeOfStructure` |
 | 能量网络 | `GoblinOracleOfPower` | `IBelieverOfPower` | `IDivineDecreeOfPower` |
 
+### 2.3 四层术语严格分层原则
+
+以下四对术语是**不可混淆的铁律**，任何文档、代码、注释中必须严格按层级使用：
+
+```
+配方层    Input — Output     （物品或流体）
+配方层    demand — yield      （祭品 / 祝福）
+Tick 层   Offering — Blessing （祭品 / 祝福）
+机器层    Bosom — Endurance   （祭品 / 祝福）
+```
+
+| 层级 | 英文术语对 | 中文 | 适用对象 | 示例 |
+|------|----------|------|---------|------|
+| **配方** | `Input` / `Output` | 输入 / 输出 | 配方层面的物品、流体 | 配方定义了 Input × N → Output × M |
+| **配方** | `demand` / `yield` | 需求 / 产出 | 经文中定义的祭品总量 / 祝福总量 | `offeringDemand`、`blessingYield` |
+| **Tick** | `Offering` / `Blessing` | 祭品 / 祝福 | 每 tick 的祭品 / 祝福 | `divineOffering`、`divineBlessing`、`IOfferingModule`、`IBlessingModule` |
+| **机器** | `Bosom` / `Endurance` | 胸怀 / 耐力 | `IBelieverOfScripture` 的缓存值 | `maxBosom`、`maxEndurance` |
+
+**关键规则**：
+
+- `Endurance` **仅**出现在 `IBelieverOfScripture` 机器缓存层（`maxEndurance`）
+- `OfferingBlessingManager` 及其以下层级（模块接口、Manager API）使用 `Blessing`，不是 `Endurance`
+- `Blessing` 用于 Tick 层和模块层，`Endurance` 用于机器缓存层
+- `Input`/`Output` 用于配方物品/流体，`Offering`/`Blessing` 用于能量层面的消耗/产出
+
 ---
 
 ## 三、包结构与 GTCEu 对齐

@@ -69,12 +69,14 @@ flowchart TB
         SET3["handleRecipeIO(IN)"]
         SET4["matchRecipe()"]
         SET5["extractDivineDemand()"]
+        SET6["beginWork()  ← 建立模块快照"]
         
         SET1 --> SET2
         SET2 -->|"是"| SET3
         SET2 -->|"否"| SET4
         SET3 --> SET5
         SET4 --> SET5
+        SET5 --> SET6
     end
     
     subgraph WORKING["逐Tick执行阶段"]
@@ -94,17 +96,19 @@ flowchart TB
         F1["completeScriptureRite()"]
         F2["handleRecipeIO(OUT)"]
         F3["applyAugurs()"]
-        F4["enterBlessingPurgeIfNeeded()"]
+        F4["endWork()  ← 清理快照"]
+        F5["enterBlessingPurgeIfNeeded()"]
         
-        F1 --> F2 --> F3 --> F4
+        F1 --> F2 --> F3 --> F4 --> F5
     end
     
-    subgraph PURGE_PHASE["排放态"]
+    subgraph PURGE_PHASE["排放态（不 Offering，全力 Blessing）"]
         P1["conductBlessingPurge()"]
-        P2["pourSanctifiedBlessing()"]
-        P3["IBelieverOfScripture 输出"]
+        P2["evaluateDivineBlessing()<br/>offeringRate = 0"]
+        P3["pourSanctifiedBlessing()<br/>→ batchBless()"]
+        P4["IBelieverOfScripture 输出"]
         
-        P1 --> P2 --> P3
+        P1 --> P2 --> P3 --> P4
     end
     
     MATCHING --> BAKE --> SNAP --> SETUP --> WORKING --> FINISH
@@ -188,20 +192,42 @@ flowchart LR
 
 `bakeRecipe()` 接收匹配到的 `GoblinScripture`，按固定顺序依次应用四个 Divine 修改器：
 
-| 序号 | 修改器 | 接口限制 | 核心功能 |
-|------|--------|----------|----------|
-| 1 | `OMNIPRESENT_ASCENSION` | 机器实现 `IOmnipresentAvatar` | 并行计算、献祭模块聚合 |
-| 2 | `ASCENSION_BENEDICTION` | 机器实现 `IAscensionBlessed` | 升腾祝福 |
-| 3 | `DIVINE_SUBTICK` | 机器实现 `IBelieverOfScripture` | 子 tick 精细处理 |
-| 4 | `ORACLE_FAVOR` | 机器实现 `IFavoredByOracle` | 神谕恩惠 |
+| 序号 | 修改器 | 接口限制 | 核心功能 | Builder |
+|------|--------|----------|----------|---------|
+| 1 | `OMNIPRESENT_ASCENSION` | 机器实现 `IOmnipresentAvatar` | 并行计算、献祭模块聚合 | `ModifierFunction.builder()` |
+| 2 | `ASCENSION_BENEDICTION` | 机器实现 `IAscensionBlessed` | 完整/溢出升腾分离、祭品倍增 | `ScriptureScribe`（继承 FunctionBuilder） |
+| 3 | `DIVINE_SUBTICK` | 机器实现 `IBelieverOfScripture` | 子 tick 并行补偿 | `ModifierFunction.builder()` |
+| 4 | `ORACLE_FAVOR` | 机器实现 `IFavoredByOracle` | 短经文打包 | `ModifierFunction.builder()` |
 
 任何一个修改器返回取消标记则中断链式执行。
 
 四个修改器均为 Divine 修改器——既不通用（依赖机器内部特性），也不专用（适用于所有 Divine 机器）。每个修改器通过对应的接口将机器特性暴露给修改器逻辑，而非绑定具体机器类型。
 
+**接口继承链**：
+
+```
+IAwakened                       ← 公共基础（isAwakened、OfferingBlessingManager）
+├── IOmnipresentAvatar          ← OMNIPRESENT_ASCENSION（getOmnipresentAvatarLimit）
+├── IAscensionBlessed           ← ASCENSION_BENEDICTION（getDevotionGrade）
+└── IFavoredByOracle            ← ORACLE_FAVOR（getOracleFavorLevel）
+
+IBelieverOfScripture            ← 经文信徒
+├── IRecipeLogicMachine
+├── IOmnipresentAvatar
+└── IAscensionBlessed
+```
+
+**修改器触发机制**：修改器由**机器实现的接口**自动决定触发，无需在配方 JSON 中声明。机器在 BAKE 阶段遍历已注册修改器列表，根据 `machine instanceof` 判断哪些生效。
+
 ### 3.3 遍在化现 OMNIPRESENT_ASCENSION
 
-通过 `IOmnipresentAvatar` 接口暴露 `getOmnipresentAvatarLimit()`，机器实现此接口即可应用该修改器。
+通过 `IOmnipresentAvatar extends IAwakened` 接口暴露 `getOmnipresentAvatarLimit()`，机器实现此接口即可自动触发该修改器（无需配方 JSON 声明）。
+
+并行计算委托给 `GoblinOracleOfOmnipresence`（继承 GTCEu `ParallelLogic`），计算四维度限制的最小值：
+- 物品输入 → `ItemRecipeCapability.CAP.getMaxParallelByInput()`
+- 流体输入 → `FluidRecipeCapability.CAP.getMaxParallelByInput()`
+- 祭品输入 → `ScriptureAptitude.CAP.getMaxParallelByInput()`（内部调 `OfferingBlessingManager.aggregateMaxOffering()`）
+- 祝福输出 → `ScriptureAptitude.CAP.limitMaxParallelByOutput()`（内部调 `OfferingBlessingManager.aggregateMaxBlessing()`）
 
 #### 3.3.1 并行计算流程
 
@@ -210,7 +236,7 @@ flowchart TB
     A[获取配方] --> B[extractDemand]
     B --> C[getMaxParallelByInput]
     C --> D[calculateParallelLimit]
-    D --> E[aggregateMaxBosom]
+    D --> E[aggregateMaxOffering]
     E --> F{并行数 > 1?}
     F -->|"是"| G[splitRecipe]
     F -->|"否"| H[保持原样]
@@ -227,43 +253,78 @@ flowchart TB
 
 #### 3.3.3 祭品输入限制计算
 
-`OfferingBlessingManager.aggregateMaxBosom()` 聚合所有已安装献祭模块的产出能力：
+`OfferingBlessingManager.aggregateMaxOffering()`（返回 `ActionResult`，含应急调整警告）聚合所有已安装献祭模块的产出能力：
 
-| 献祭模块类型 | Bosom 计算方式 |
+| 献祭模块类型 | Offering 计算方式 |
 |-------------|---------------|
 | `ThunderOfferingModule` | 评估电力输出能力 |
 | `KineticOfferingModule` | 评估动能输出能力 |
 | `FuelOfferingModule` | 评估燃料输出能力（含两阶段机制） |
 | `MediumOfferingModule` | 评估介质输出能力 |
 
-各模块的 Bosom 累加后形成 `maxBosom`，下游修改器可据此决定并行处理数。
+各模块的 Offering 累加后形成 `maxOffering`，下游修改器可据此决定并行处理数。
 
 ### 3.4 升腾祝福 ASCENSION_BENEDICTION
 
-通过 `IAscensionBlessed` 接口暴露机器能力。
+通过 `IAscensionBlessed extends IAwakened` 接口暴露机器能力，`getDevotionGrade()` 作为准入门槛，祭品容量决定升腾次数。
+
+**核心规则**：
+- **准入门槛**：`devotionGrade >= scriptureRank`（`scriptureRank = floor(log4(unitDemand/8))`），达不到则返回 `cancel("虔诚等级不足")`
+- **容量限制**：升腾次数完全由 `maxOffering / postParallelDemand` 决定，与虔诚等级无关
+- **升腾模式分离**：完整升腾（`duration × 0.5^n >= 1`）耗时折半，溢出升腾（`duration × 0.5^n < 1`）吞吐量×4
 
 **调用流程：**
 
 1. 检查接口支持：`machine instanceof IAscensionBlessed`
-2. 获取机器能力：`getDevotionGrade()`、`getOfferingBlessingManager().aggregateMaxBosom()`
-3. 获取配方数据：`ScriptureAptitude.CAP.extractDemand(recipe)`
-4. 结合三者计算升腾次数
+2. 准入门槛：`devotionGrade >= scriptureRank`，不满足则 cancel
+3. 获取机器祭品容量：`ScriptureAptitude.CAP.getMaxOffering(machine)`（内部调用 `OfferingBlessingManager.aggregateMaxOffering()`，返回 `ActionResult`）
+4. 计算升腾次数：`totalAscends = floor(log4(maxOffering / postParallelDemand))`
+5. 分离模式：`fullAscends = min(totalAscends, floor(log2(duration)))`，`overflowAscends = totalAscends - fullAscends`
+6. 构建修改器：通过 **`ScriptureScribe`**（继承 `ModifierFunction.FunctionBuilder`）构建：
 
-**各组件职责：**
+```java
+var builder = new ScriptureScribe()
+    .addOCs(totalAscends)
+    .divineMultiplier(Math.pow(4, totalAscends));  // 仅倍增 Divine 内容
+
+if (fullAscends > 0) {
+    builder.durationMultiplier(Math.pow(0.5, fullAscends));
+}
+if (overflowAscends > 0) {
+    int subtickParallel = (int) Math.pow(4, overflowAscends);
+    ScriptureAptitude.CAP.setSubtickOverflow(recipe, subtickParallel);
+    builder.subtickParallels(subtickParallel);
+}
+return builder.build();
+```
+
+**`ScriptureScribe` vs `ModifierFunction.builder()`**：
+
+| 方法 | 来源 | 作用 |
+|------|------|------|
+| `divineMultiplier(n)` | `ScriptureScribe` 新增 | 仅倍增 `ScriptureAptitude.CAP`（Divine 内容），不误伤其他 tick 输入 |
+| `powerMultiplier(n)` | `ScriptureScribe` 新增 | 倍增 `DivinePowerRegistry` 中所有已注册 Power 资源（默认含 EU + Divine） |
+| `addOCs(n)` | 继承自 `FunctionBuilder` | 设置升腾次数 |
+| `durationMultiplier(n)` | 继承自 `FunctionBuilder` | 耗时倍率 |
+| `subtickParallels(n)` | 继承自 `FunctionBuilder` | 子 tick 并行度 |
+
+**`DivinePowerRegistry` 的作用**：`ScriptureScribe` 背后依赖 `DivinePowerRegistry`（枚举单例注册表）的 `isPower()` 判断，确保 `divineMultiplier` 仅作用于 Divine 内容，不会像 `tickInputModifier` 那样误伤其他非 EU tick 输入。默认已注册 `EURecipeCapability.CAP`，`ScriptureAptitude` 在构造时自动注册。
 
 | 组件 | 职责 |
 |------|------|
-| `IAscensionBlessed` | 标识机器是否支持升腾 |
-| `OfferingBlessingManager` | 聚合献祭模块的 maxBosom |
-| `ScriptureAptitude.CAP` | 读取经文的 demand |
+| `IAscensionBlessed` | 标识机器支持升腾，提供 `getDevotionGrade()` 准入门槛 |
+| `ScriptureAptitude.CAP` | 统一入口：读取经文 demand，提供 `getMaxOffering()`，`setSubtickOverflow()` |
+| `OfferingBlessingManager` | 机器内部能力：聚合献祭模块的 maxOffering（由 `ScriptureAptitude.CAP` 间接调用） |
+| `ScriptureScribe` | 专用 FunctionBuilder：提供 `divineMultiplier()` / `powerMultiplier()` 精准控制 |
+| `DivinePowerRegistry` | 枚举单例注册表：管理"能量型资源"集合，支撑 `applyAllButPower` 排除逻辑 |
 
 ### 3.5 神圣子tick DIVINE_SUBTICK
 
-通过 `IBelieverOfScripture` 接口判定是否支持。读取 `subtickOverflow`（由 ASCENSION_BENEDICTION 在升腾溢出时记录），将其转化为 `subtickParallel = 2^subtickOverflow` 的并行补偿，实现无损补偿。
+通过 `IBelieverOfScripture` 接口判定是否支持。读取 `subtickOverflow`（由 ASCENSION_BENEDICTION 在升腾溢出时写入，值为 `4^overflowAscends`），将其转化为 `subtickParallel` 的并行补偿，实现无损吞吐量补偿。
 
 ### 3.6 神谕恩惠 ORACLE_FAVOR
 
-通过 `IFavoredByOracle` 接口判定是否支持，用于打包短经文。
+通过 `IFavoredByOracle extends IAwakened` 接口判定是否支持，`getOracleFavorLevel()` 决定短经文打包容量。打包仅使用世俗资源限制（物品/流体），通过 `GoblinOracleOfOmnipresence.getMortalAvatarCount()` 排除 `ScriptureAptitude.CAP` 和 `EURecipeCapability.CAP`。
 
 ---
 
@@ -312,6 +373,8 @@ public interface IPresenceOfOracle {
 
 4. **设置工作状态**：记录配方、计算 `duration = recipe.duration * blessedEffort`、设置 `Status.WORKING`
 
+5. **标记工作开始**：`getOfferingBlessingManager().beginWork()` — 创建模块状态快照（记录目标 Offering/Blessing、各模块配置节流阀）
+
 **关键特性说明：**
 
 | 特性 | 说明 |
@@ -320,6 +383,7 @@ public interface IPresenceOfOracle {
 | `IPresenceOfOracle` | 机器必须实现此接口才能使用预言者 |
 | `witnessInputs()` | 在 `beforeWorking` 之后执行，快照输入 |
 | `matchRecipe()` | `devoteInput=false` 时使用，只验证不消耗 |
+| `beginWork()` | SETUP 末尾调用 `OfferingBlessingManager.beginWork()`，创建模块快照 |
 
 ### 5.2 RiteMode 仪式模式矩阵
 
@@ -363,25 +427,28 @@ flowchart TB
 #### evaluateDivineOffering() — 模拟匹配阶段
 
 **设计意图**：此阶段**不实际消耗祭品**，仅评估机器能否满足该 tick 的 `divineOffering` 需求。
+（SETUP 阶段已调用 `beginWork()` 建立快照，`aggregateMaxOffering()` 基于快照检查模块可用性，必要时触发应急调整。）
 
 评估流程：
 
-1. 通过 `OfferingBlessingManager.aggregateMaxBosom()` 聚合所有献祭模块的产出能力
+1. 通过 `OfferingBlessingManager.aggregateMaxOffering()`（返回 `ActionResult`，含应急调整警告）聚合所有献祭模块的产出能力
    - `ThunderOfferingModule`：评估电力输出
    - `KineticOfferingModule`：评估动能输出
    - `FuelOfferingModule`：检查燃烧状态（正在燃烧 → `tickOffering()`；未燃烧 → `simulateMatch()` 不消耗燃料匹配配方）
    - `MediumOfferingModule`：评估介质输出
 
-2. 计算 `offeringRate = min(1.0f, maxBosom / divineOffering)`
+2. 若 `result.isFail("emergency_insufficient")`，`offeringRate = 0`
+3. 否则：`maxOffering = result` 内部值
+4. 计算 `offeringRate = min(1.0f, maxOffering / divineOffering)`
 
-3. 若 `divineOffering = 0`，`offeringRate` 直接设为 1.0f
+5. 若 `divineOffering = 0`，`offeringRate` 直接设为 1.0f
 
 #### evaluateDivineBlessing() — 祝福产出评估
 
 评估流程：
 
-1. 通过 `OfferingBlessingManager.aggregateMaxEndurance()` 聚合祝福槽上限
-2. 计算剩余空间 = `maxEndurance - currentBlessingStock`
+1. 通过 `OfferingBlessingManager.aggregateMaxBlessing()`（返回 `ActionResult`）聚合祝福槽上限
+2. 计算剩余空间 = `maxBlessing - currentBlessingStock`
 3. 计算 `blessingRate = min(1.0f, availableSpace / divineBlessing)`
 4. 若 `divineBlessing = 0`，`blessingRate` 直接设为 1.0f
 5. 若祝福槽已满（剩余空间 ≤ 0），`blessingRate = 0.0f`
@@ -435,7 +502,8 @@ flowchart TB
 
 1. **输出产出**：`handleRecipeIO(IO.OUT)` 将配方输出物放入输出槽
 2. **应用预言者序列**：若经文包含 augur 且机器实现 `IPresenceOfOracle`，调用 `applyAugurs()` 对输出槽应用预言者效果
-3. **排放态检查**：`enterBlessingPurgeIfNeeded()` 检查 `blessingStock > 0`，决定进入 PURGE 态还是返回 IDLE
+3. **标记工作完成**：`getOfferingBlessingManager().endWork()` — 清理快照、逐个调用模块 `onWorkComplete()`、恢复应用节流阀为配置值
+4. **排放态检查**：`enterBlessingPurgeIfNeeded()` 检查 `blessingStock > 0`，决定进入 PURGE 态还是返回 IDLE
 
 ### 7.2 applyAugurs 预言者应用
 
@@ -469,18 +537,22 @@ flowchart TB
 
 ### 8.1 排放态流程图
 
+PURGE 态的核心逻辑：**不 Offering，全力 Blessing**。管线与 `assessBelieverState` 高度相似，但 `offeringRate` 固定为 0，完全不受 Offering 影响。
+
 ```mermaid
 flowchart TB
     E1{blessingStock > 0?} -->|否| E2[返回IDLE]
     E1 -->|是| E3[进入排放态]
-    
-    E3 --> E4[blessingYield = 0]
-    E4 --> E5[pourSanctifiedBlessing]
-    E5 --> E6[blessingStock -= blessingPoured]
-    E6 --> E7[调用 IBelieverOfScripture 输出]
-    E7 --> E8{blessingStock > 0?}
-    E8 -->|是| E5
-    E8 -->|否| E9[返回IDLE]
+
+    E3 --> E4["offeringRate = 0<br/>（不 Offering，不受 Offering 影响）"]
+    E4 --> E5["evaluateDivineBlessing()<br/>→ aggregateMaxBlessing()"]
+    E5 --> E6["blessingRate = min(1.0f, maxBlessing / blessingStock)"]
+    E6 --> E7["pourSanctifiedBlessing()<br/>→ batchBless()"]
+    E7 --> E8["blessingStock -= blessingPoured"]
+    E8 --> E9["调用 IBelieverOfScripture 输出"]
+    E9 --> E10{blessingStock > 0?}
+    E10 -->|是| E5
+    E10 -->|否| E11[返回IDLE]
 ```
 
 ### 8.2 ScriptureStatus 状态枚举
@@ -536,49 +608,131 @@ maintainOracleSubscription()  // 每 tick 订阅管理
 
 ### 9.1 接口一览
 
-#### 9.1.1 IBelieverOfScripture（经文信徒）
+所有接口位于 `com.goblincoders.goblintech.api.machine.feature` 包，均继承 `IMachineFeature`。
+
+#### 9.1.0 IAwakened（已觉醒者 — 公共基础）
 
 ```java
-public interface IBelieverOfScripture {
+public interface IAwakened extends IMachineFeature {
+    // 获取祭品祝福管理器（支持懒加载兜底）
     OfferingBlessingManager getOfferingBlessingManager();
-    int getBlessedEffort();
-    long getBlessingStock();
+    // 显式初始化管理器（建议在机器构造函数中调用）
+    OfferingBlessingManager initOfferingBlessingManager();
+    // 配方匹配守卫 — 神谕是否觉醒
+    default boolean isAwakened() { return true; }
+
+    // 内部存储访问器（由机器实现类提供）
+    OfferingBlessingManager getManagerStorage();
+    void setManagerStorage(OfferingBlessingManager manager);
 }
 ```
 
-#### 9.1.2 IOmnipresentAvatar（可遍在化现）
+**初始化策略**：机器实现 `ITieredMachine` → 创建带虔诚等级限制的 `new OfferingBlessingManager(tier)`；仅实现 `IAwakened` → 无限制模式 `new OfferingBlessingManager()`。
+
+#### 9.1.1 IBelieverOfScripture（经文信徒）
+
+继承层级：`IBelieverOfScripture extends IRecipeLogicMachine, IOmnipresentAvatar, IAscensionBlessed`
 
 ```java
-public interface IOmnipresentAvatar {
-    long getOmnipresentAvatarLimit();
+public interface IBelieverOfScripture extends IRecipeLogicMachine, IOmnipresentAvatar, IAscensionBlessed {
+    // 容槽容量（Bosom / Endurance）
+    default int getMaxBosom() { return 0; }
+    default int getMaxEndurance() { return 0; }
+    int getOfferingStock();
+    void setOfferingStock(int value);
+    int getBlessingStock();     // > 0 触发 PURGE 态
+    void setBlessingStock(int value);
+
+    // 安全阈值
+    default int getOfferingThreshold() { return getMaxBosom() / 4; }
+    default int getBlessingThreshold() { return getMaxEndurance() * 3 / 4; }
+
+    // 速率评估（由 assessBelieverState 每 tick 计算）
+    float getOfferingRate();
+    void setOfferingRate(float rate);
+    float getBlessingRate();
+    void setBlessingRate(float rate);
+    float getPietyLevel();       // = min(offeringRate, blessingRate)
+    void setPietyLevel(float rate);
+    int getDivineEffort();       // = pietyLevel × blessedEffort
+    void setDivineEffort(int rate);
+
+    // 神恩加持的努力（默认 16）
+    default int getBlessedEffort() { return 16; }
+
+    // 内部计数器
+    int getOfferingReceived();
+    void setOfferingReceived(int value);
+    int getBlessingPoured();
+    void setBlessingPoured(int value);
+
+    // 评估默认实现（由 assessBelieverState() 每 tick 调用）
+    default void evaluateDivineOffering(int divineOffering) { ... }
+    default void evaluateDivineBlessing(int divineBlessing) { ... }
+
+    // 子 tick 上限
+    default int getMaxSubtickCount() { return 64; }
+
+    // 排放态输出
+    ActionResult pourSanctifiedBlessing();
+}
+```
+
+**方法分组**：
+
+| 分组 | 方法 | 说明 |
+|------|------|------|
+| 容槽容量 | `getMaxBosom()` / `getMaxEndurance()` | 机器的祭品/祝福容槽上限 |
+| 容槽状态 | `getOfferingStock()` / `getBlessingStock()` | `blessingStock > 0` 触发 PURGE 态 |
+| 速率 | `getOfferingRate()` / `getBlessingRate()` | 由 `assessBelieverState()` 每 tick 计算 |
+| 虔诚/努力 | `getPietyLevel()` / `getDivineEffort()` | `pietyLevel = min(offeringRate, blessingRate)` |
+| 子 tick | `getMaxSubtickCount()` | `DIVINE_SUBTICK` 硬件上限 |
+| 排放 | `pourSanctifiedBlessing()` | PURGE 态每 tick 输出 |
+
+#### 9.1.2 IOmnipresentAvatar（可遍在化现）
+
+继承：`IOmnipresentAvatar extends IAwakened`，归属 `OMNIPRESENT_ASCENSION` 修改器。
+
+```java
+public interface IOmnipresentAvatar extends IAwakened {
+    default int getOmnipresentAvatarLimit() { return 1; }
 }
 ```
 
 #### 9.1.3 IAscensionBlessed（蒙祝福可升腾）
 
+继承：`IAscensionBlessed extends IAwakened`，归属 `ASCENSION_BENEDICTION` 修改器。
+
 ```java
-public interface IAscensionBlessed {
-    int getDevotionGrade();
-    OfferingBlessingManager getOfferingBlessingManager();
+public interface IAscensionBlessed extends IAwakened {
+    default int getDevotionGrade() { return GoblinTechValues.ULV; }
 }
 ```
 
 #### 9.1.4 IFavoredByOracle（蒙神谕恩惠者）
 
+继承：`IFavoredByOracle extends IAwakened`，归属 `ORACLE_FAVOR` 修改器。
+
 ```java
-public interface IFavoredByOracle {
-    float getOracleFavorBonus();
+public interface IFavoredByOracle extends IAwakened {
+    int getOracleFavorLevel();
 }
 ```
 
 #### 9.1.5 IPresenceOfOracle（神谕在场）
 
+归属：预言者体系（SNAP 见证 / FINISH 应用）。
+
 ```java
-public interface IPresenceOfOracle {
-    void witnessInputs(GTRecipe recipe);
-    void applyAugurs(List<Augur> augurs, ScriptContext ctx);
+public interface IPresenceOfOracle extends IMachineFeature {
+    void witnessInputs(ScriptureContext ctx);
+    default void applyAugurs(List<Augur> augurs, ScriptureContext ctx) { ... }
 }
 ```
+
+**调用时序**：
+- `witnessInputs()`：`beforeWorking` 之后、`handleRecipeIO(IN)` 之前
+- `applyAugurs()`：`completeScriptureRite()` 中 `handleRecipeIO(OUT)` 之后
 
 ### 9.2 关键数据结构
 
@@ -609,6 +763,78 @@ public interface Augur {
 | `augurs` | `List<Augur>` | 预言者列表 |
 | `riteMode` | `RiteMode` | 仪式模式 |
 | `requiresVision` | `boolean` | 是否需要神谕视野 |
+
+#### 9.2.4 DivinePowerRegistry（神圣之力注册表）
+
+枚举单例，管理"每 tick 能量型资源"集合，支撑 `ScriptureScribe` 和 `applyAllButPower` 排除逻辑。
+
+```java
+public enum DivinePowerRegistry {
+    INSTANCE;
+
+    private final Set<RecipeCapability<?>> powers = new HashSet<>();
+
+    DivinePowerRegistry() {
+        powers.add(EURecipeCapability.CAP);  // 默认注册 EU
+    }
+
+    public void register(RecipeCapability<?> cap) {
+        powers.add(cap);
+    }
+
+    public boolean isPower(RecipeCapability<?> cap) {
+        return powers.contains(cap);
+    }
+
+    public Set<RecipeCapability<?>> all() {
+        return Collections.unmodifiableSet(powers);
+    }
+}
+```
+
+**注册时机**：`ScriptureAptitude` 在构造函数中自动调用 `DivinePowerRegistry.INSTANCE.register(this)` 注册自身。其他 Mod 可通过 `DivinePowerRegistry.INSTANCE.register(cap)` 扩展。
+
+#### 9.2.5 ScriptureScribe（经文抄写员）
+
+继承 `ModifierFunction.FunctionBuilder`，新增 `divineMultiplier()` 和 `powerMultiplier()` 便捷方法。
+
+```java
+public class ScriptureScribe extends ModifierFunction.FunctionBuilder {
+
+    private ContentModifier divineModifier = ContentModifier.IDENTITY;
+    private final Map<RecipeCapability<?>, ContentModifier> perPowerModifiers = new HashMap<>();
+
+    /** 仅倍增 Divine 内容，不影响其他 tick 输入 */
+    public ScriptureScribe divineMultiplier(double multiplier) { ... }
+
+    /** 倍增所有已注册 Power 资源（EU + Divine + 其他） */
+    public ScriptureScribe powerMultiplier(double multiplier) { ... }
+
+    /** 对指定 Power 资源应用倍率 */
+    public ScriptureScribe powerMultiplier(RecipeCapability<?> cap, double multiplier) { ... }
+
+    @Override
+    public ModifierFunction build() {
+        // 1. 调用父类 build() 获取基础 ModifierFunction
+        // 2. 包装：先执行父类修改，再应用 divineMultiplier 到 ScriptureAptitude.CAP
+        // 3. 遍历 perPowerModifiers，对每个 Power 资源单独倍增
+    }
+}
+```
+
+**与 `ModifierFunction.builder()` 的对比**：
+
+| 方法 | 来源 | 作用 |
+|------|------|------|
+| `divineMultiplier(n)` | `ScriptureScribe` 新增 | 仅倍增 Divine 内容 |
+| `powerMultiplier(n)` | `ScriptureScribe` 新增 | 倍增所有 Power 资源（对标 `eutMultiplier`） |
+| `powerMultiplier(cap, n)` | `ScriptureScribe` 新增 | 对指定 Power 资源精确倍增 |
+| `addOCs(n)` | 继承 | 升腾次数 |
+| `durationMultiplier(n)` | 继承 | 耗时倍率 |
+| `subtickParallels(n)` | 继承 | 子 tick 并行度 |
+| `batchParallels(n)` | 继承 | 批量并行度 |
+| `modifyAllContents(cm)` | 继承 | 全内容修改器 |
+| `parallels(n)` | 继承 | 并行数 |
 
 ### 9.3 RiteMode 仪式模式
 

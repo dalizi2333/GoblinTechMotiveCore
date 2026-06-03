@@ -130,6 +130,13 @@ enumExtensions = "META-INF/enum_extensions.json"
     ordering = "AFTER"
     side = "BOTH"
 
+[[dependencies.${mod_id}]]
+    modId = "electroenergetics"
+    type = "required"
+    versionRange = "[${cee_mod_version},)"
+    ordering = "AFTER"
+    side = "BOTH"
+
 
 #[features.${mod_id}]
 #openGLVersion = "[3.2,)"

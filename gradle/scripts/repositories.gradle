@@ -1,8 +1,5 @@
 repositories {
     mavenLocal()
-    flatDir {
-        dirs "${projectDir}/libs"
-    }
     mavenCentral()
     // force gradle to download FastUtil & LWJGL from the central maven so we can get source artifacts
     exclusiveContent { // Force
